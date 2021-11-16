@@ -3,6 +3,7 @@ use erupt::extensions::{khr_surface, khr_swapchain};
 use erupt::utils::surface;
 use erupt::vk;
 use std::rc::Rc;
+use std::sync::Arc;
 use winit::window::Window;
 
 #[derive(Default)]
@@ -12,18 +13,18 @@ pub struct SwapchainBuffer {
 }
 
 pub struct Swapchain {
-    device: Rc<Device>,
-    handle: khr_swapchain::SwapchainKHR,
-    surface: khr_surface::SurfaceKHR,
-    color_format: vk::Format,
-    color_space: khr_surface::ColorSpaceKHR,
-    images: Vec<vk::Image>,
-    buffers: Vec<SwapchainBuffer>,
-    queue_node_index: u32,
+    device: Arc<Device>,
+    handle: vk::SwapchainKHR,
+    surface: vk::SurfaceKHR,
+    pub color_format: vk::Format,
+    pub color_space: khr_surface::ColorSpaceKHR,
+    pub images: Vec<vk::Image>,
+    pub buffers: Vec<SwapchainBuffer>,
+    pub queue_node_index: u32,
 }
 
 impl Swapchain {
-    pub fn new(device: Rc<Device>) -> Self {
+    pub fn new(device: Arc<Device>) -> Self {
         Swapchain {
             device,
             handle: Default::default(),
@@ -173,7 +174,7 @@ impl Swapchain {
             .clipped(true)
             .composite_alpha(khr_surface::CompositeAlphaFlagBitsKHR::OPAQUE_KHR);
 
-        self.handle = unsafe { self.device.create_swapchain_khr(swapchain_create_info) };
+        self.handle = self.device.create_swapchain_khr(swapchain_create_info);
 
         if !old_swapchain.is_null() {
             for buffer in &self.buffers {

@@ -849,6 +849,7 @@ dependencies = [
  "gpu-alloc",
  "gpu-alloc-erupt",
  "log",
+ "parking_lot",
  "winit",
 ]
 

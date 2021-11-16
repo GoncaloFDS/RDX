@@ -2,14 +2,14 @@ use crate::device::Device;
 use crate::renderer::Renderer;
 use crate::{HEIGHT, WIDTH, WINDOW_NAME};
 use erupt::vk;
-use std::rc::Rc;
+use std::sync::Arc;
 use winit::dpi::LogicalSize;
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
 pub struct RdxEngine {
     window: Window,
-    device: Rc<Device>,
+    device: Arc<Device>,
     renderer: Renderer,
 }
 
@@ -17,7 +17,7 @@ impl RdxEngine {
     pub fn new() -> (RdxEngine, EventLoop<()>) {
         let (event_loop, window) = Self::new_window(WIDTH, HEIGHT, WINDOW_NAME);
 
-        let device = Rc::new(Device::new(
+        let device = Arc::new(Device::new(
             &[
                 vk::KHR_SWAPCHAIN_EXTENSION_NAME,
                 vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,

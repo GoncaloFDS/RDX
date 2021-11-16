@@ -1,10 +1,11 @@
 use crate::debug::VALIDATION_LAYER;
-use erupt::extensions::{khr_surface, khr_swapchain};
-use erupt::vk1_0::ImageView;
+use erupt::vk1_0::Format;
 use erupt::{vk, DeviceLoader, EntryLoader, ExtendableFromConst, InstanceLoader};
-use gpu_alloc::GpuAllocator;
+use gpu_alloc::{GpuAllocator, MemoryBlock};
+use gpu_alloc_erupt::EruptMemoryDevice;
+use parking_lot::Mutex;
 use std::ffi::{CStr, CString};
-use std::ops::Deref;
+use std::ops::Range;
 use std::os::raw::c_char;
 
 fn get_queue_family_index(
@@ -26,9 +27,106 @@ pub struct QueueFamilyIndex {
     pub transfer: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Extent {
+    D1 { width: u32 },
+    D2 { width: u32, height: u32 },
+    D3 { width: u32, height: u32, depth: u32 },
+}
+
+pub enum ImageMemory {
+    DeviceImage {
+        memory_block: MemoryBlock<vk::DeviceMemory>,
+    },
+    SwapchainImage,
+}
+
+pub struct Image {
+    handle: vk::Image,
+    info: ImageInfo,
+    memory: ImageMemory,
+}
+
+pub struct SubresourceRange {
+    pub aspect_flags: vk::ImageAspectFlags,
+    pub mip_levels: Range<u32>,
+    pub array_layers: Range<u32>,
+}
+
+impl SubresourceRange {
+    pub fn new(aspect_flags: vk::ImageAspectFlags, levels: Range<u32>, layers: Range<u32>) -> Self {
+        SubresourceRange {
+            aspect_flags,
+            mip_levels: levels,
+            array_layers: layers,
+        }
+    }
+
+    pub fn whole(info: &ImageInfo) -> Self {
+        SubresourceRange {
+            aspect_flags: vk::ImageAspectFlags::COLOR,
+            mip_levels: 0..info.mip_levels,
+            array_layers: 0..info.array_layers,
+        }
+    }
+}
+
+pub struct ImageViewInfo {
+    pub image: Image,
+    pub view_type: vk::ImageViewType,
+    pub subresource_range: SubresourceRange,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ImageInfo {
+    pub extent: Extent,
+    pub format: vk::Format,
+    pub mip_levels: u32,
+    pub array_layers: u32,
+    pub samples: vk::SampleCountFlagBits,
+    pub usage: vk::ImageUsageFlags,
+    pub tiling: vk::ImageTiling,
+}
+
+impl From<Extent> for vk::ImageType {
+    fn from(extent: Extent) -> Self {
+        match extent {
+            Extent::D1 { .. } => vk::ImageType::_1D,
+            Extent::D2 { .. } => vk::ImageType::_2D,
+            Extent::D3 { .. } => vk::ImageType::_3D,
+        }
+    }
+}
+
+impl From<Extent> for vk::Extent3D {
+    fn from(extent: Extent) -> Self {
+        match extent {
+            Extent::D1 { width } => vk::Extent3D {
+                width,
+                height: 0,
+                depth: 1,
+            },
+            Extent::D2 { width, height } => vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            },
+            Extent::D3 {
+                width,
+                height,
+                depth,
+            } => vk::Extent3D {
+                width,
+                height,
+                depth,
+            },
+        }
+    }
+}
+
 pub struct Device {
     handle: DeviceLoader,
-    allocator: GpuAllocator<vk::DeviceMemory>,
+    allocator: Mutex<GpuAllocator<vk::DeviceMemory>>,
     instance: InstanceLoader,
     _entry: EntryLoader,
     physical_device: vk::PhysicalDevice,
@@ -139,9 +237,10 @@ impl Device {
                 .unwrap()
         };
 
-        let allocator = GpuAllocator::new(gpu_alloc::Config::i_am_prototyping(), unsafe {
-            gpu_alloc_erupt::device_properties(&instance, physical_device).unwrap()
-        });
+        let allocator = Mutex::new(GpuAllocator::new(
+            gpu_alloc::Config::i_am_prototyping(),
+            unsafe { gpu_alloc_erupt::device_properties(&instance, physical_device).unwrap() },
+        ));
 
         Device {
             handle: device,
@@ -260,6 +359,83 @@ impl Device {
             .wait_semaphores(wait_semaphores);
         unsafe { self.handle.queue_present_khr(queue, &present_info).unwrap() }
     }
+
+    pub fn create_command_pool(
+        &self,
+        queue_family_index: u32,
+        flags: vk::CommandPoolCreateFlags,
+    ) -> vk::CommandPool {
+        let create_info = vk::CommandPoolCreateInfoBuilder::new()
+            .queue_family_index(queue_family_index)
+            .flags(flags);
+        unsafe { self.handle.create_command_pool(&create_info, None).unwrap() }
+    }
+
+    pub fn allocate_command_buffers(
+        &self,
+        command_pool: vk::CommandPool,
+        level: vk::CommandBufferLevel,
+        count: u32,
+    ) -> Vec<vk::CommandBuffer> {
+        let create_info = &vk::CommandBufferAllocateInfoBuilder::new()
+            .command_pool(command_pool)
+            .level(level)
+            .command_buffer_count(count);
+        unsafe { self.handle.allocate_command_buffers(&create_info).unwrap() }
+    }
+
+    pub fn create_fence(&self) -> vk::Fence {
+        let create_info = vk::FenceCreateInfoBuilder::new().flags(vk::FenceCreateFlags::SIGNALED);
+        unsafe { self.handle.create_fence(&create_info, None).unwrap() }
+    }
+
+    pub fn create_semaphore(&self) -> vk::Semaphore {
+        let create_info = vk::SemaphoreCreateInfo::default();
+        unsafe { self.handle.create_semaphore(&create_info, None).unwrap() }
+    }
+
+    pub fn create_image(&self, image_info: ImageInfo) -> Image {
+        let create_info = vk::ImageCreateInfoBuilder::new()
+            .image_type(image_info.extent.into())
+            .extent(image_info.extent.into())
+            .format(image_info.format)
+            .mip_levels(image_info.mip_levels)
+            .samples(image_info.samples)
+            .array_layers(image_info.array_layers)
+            .tiling(image_info.tiling)
+            .usage(image_info.usage);
+        let image = unsafe { self.handle.create_image(&create_info, None).unwrap() };
+
+        let mem_reqs = unsafe { self.handle.get_image_memory_requirements(image) };
+        let mem_block = unsafe {
+            self.allocator
+                .lock()
+                .alloc(
+                    EruptMemoryDevice::wrap(&self.handle),
+                    gpu_alloc::Request {
+                        size: mem_reqs.size,
+                        align_mask: mem_reqs.alignment - 1,
+                        usage: gpu_alloc::UsageFlags::empty(),
+                        memory_types: mem_reqs.memory_type_bits,
+                    },
+                )
+                .unwrap()
+        };
+
+        unsafe {
+            self.handle
+                .bind_image_memory(image, *mem_block.memory(), mem_block.offset())
+                .unwrap();
+        }
+
+        Image {
+            handle: image,
+            info: image_info,
+            memory: ImageMemory::DeviceImage {
+                memory_block: mem_block,
+            },
+        }
+    }
 }
 
 fn create_instance(entry: &EntryLoader) -> InstanceLoader {
@@ -300,7 +476,7 @@ fn enumerate_required_surface_extensions() -> Vec<*const c_char> {
         target_os = "openbsd"
     ))]
     let extensions = vec![
-        khr_surface::KHR_SURFACE_EXTENSION_NAME,
+        erupt::extensions::khr_surface::KHR_SURFACE_EXTENSION_NAME,
         erupt::extensions::khr_wayland_surface::KHR_WAYLAND_SURFACE_EXTENSION_NAME,
     ];
 
@@ -312,7 +488,7 @@ fn enumerate_required_surface_extensions() -> Vec<*const c_char> {
         target_os = "openbsd"
     ))]
     let extensions = vec![
-        khr_surface::KHR_SURFACE_EXTENSION_NAME,
+        erupt::extensions::khr_surface::KHR_SURFACE_EXTENSION_NAME,
         erupt::extensions::khr_xlib_surface::KHR_XLIB_SURFACE_EXTENSION_NAME,
     ];
 
@@ -324,31 +500,31 @@ fn enumerate_required_surface_extensions() -> Vec<*const c_char> {
         target_os = "openbsd"
     ))]
     let extensions = vec![
-        khr_surface::KHR_SURFACE_EXTENSION_NAME,
+        erupt::extensions::khr_surface::KHR_SURFACE_EXTENSION_NAME,
         erupt::extensions::khr_xcb_surface::KHR_XCB_SURFACE_EXTENSION_NAME,
     ];
 
     #[cfg(any(target_os = "android"))]
     let extensions = vec![
-        khr_surface::KHR_SURFACE_EXTENSION_NAME,
+        erupt::extensions::khr_surface::KHR_SURFACE_EXTENSION_NAME,
         erupt::extensions::khr_android_surface::KHR_ANDROID_SURFACE_EXTENSION_NAME,
     ];
 
     #[cfg(any(target_os = "macos"))]
     let extensions = vec![
-        khr_surface::KHR_SURFACE_EXTENSION_NAME,
+        erupt::extensions::khr_surface::KHR_SURFACE_EXTENSION_NAME,
         erupt::extensions::ext_metal_surface::EXT_METAL_SURFACE_EXTENSION_NAME,
     ];
 
     #[cfg(any(target_os = "ios"))]
     let extensions = vec![
-        khr_surface::KHR_SURFACE_EXTENSION_NAME,
+        erupt::extensions::khr_surface::KHR_SURFACE_EXTENSION_NAME,
         erupt::extensions::ext_metal_surface::EXT_METAL_SURFACE_EXTENSION_NAME,
     ];
 
     #[cfg(target_os = "windows")]
     let extensions = vec![
-        khr_surface::KHR_SURFACE_EXTENSION_NAME,
+        erupt::extensions::khr_surface::KHR_SURFACE_EXTENSION_NAME,
         erupt::extensions::khr_win32_surface::KHR_WIN32_SURFACE_EXTENSION_NAME,
     ];
 
