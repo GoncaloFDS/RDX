@@ -1,19 +1,24 @@
-use erupt::{cstr, vk, InstanceLoader};
-use std::ffi::{c_void, CStr};
+use crate::vulkan::device::Device;
+use erupt::{cstr, vk};
+use std::ffi::{c_void, CStr, CString};
 use std::os::raw::c_char;
+use std::rc::Rc;
 
 pub const VALIDATION_LAYER: *const c_char = cstr!("VK_LAYER_KHRONOS_validation");
 
 pub struct DebugMessenger {
     handle: vk::DebugUtilsMessengerEXT,
+    device: Rc<Device>,
 }
 
 impl DebugMessenger {
-    pub fn new(instance: &InstanceLoader) -> Self {
+    pub fn new(device: Rc<Device>) -> Self {
         let handle = if cfg!(debug_assertions) {
+            log::debug!("Enabling debug messenger");
             let messenger_info = vk::DebugUtilsMessengerCreateInfoEXTBuilder::new()
                 .message_severity(
-                    vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE_EXT
+                    vk::DebugUtilsMessageSeverityFlagsEXT::INFO_EXT
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE_EXT
                         | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING_EXT
                         | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR_EXT,
                 )
@@ -25,7 +30,8 @@ impl DebugMessenger {
                 .pfn_user_callback(Some(debug_callback));
 
             unsafe {
-                instance
+                device
+                    .get_instance()
                     .create_debug_utils_messenger_ext(&messenger_info, None)
                     .unwrap()
             }
@@ -33,13 +39,17 @@ impl DebugMessenger {
             vk::DebugUtilsMessengerEXT::null()
         };
 
-        DebugMessenger { handle }
+        DebugMessenger { handle, device }
     }
+}
 
-    pub fn destroy(&mut self, instance: &InstanceLoader) {
+impl Drop for DebugMessenger {
+    fn drop(&mut self) {
         if !self.handle.is_null() {
             unsafe {
-                instance.destroy_debug_utils_messenger_ext(Some(self.handle), None);
+                self.device
+                    .get_instance()
+                    .destroy_debug_utils_messenger_ext(Some(self.handle), None);
             }
         }
     }
@@ -76,4 +86,21 @@ unsafe extern "system" fn debug_callback(
     };
 
     vk::FALSE
+}
+
+pub struct DebugUtils {
+    device: Rc<Device>,
+}
+
+impl DebugUtils {
+    pub fn new(device: Rc<Device>) -> Self {
+        DebugUtils { device }
+    }
+
+    pub fn set_object_name(&self, object: vk::Queue, name: &str) {
+        let info = vk::DebugUtilsObjectNameInfoEXTBuilder::new()
+            .object_handle(object.object_handle())
+            .object_type(vk::ObjectType::QUEUE)
+            .object_name(&CString::new(name).unwrap());
+    }
 }

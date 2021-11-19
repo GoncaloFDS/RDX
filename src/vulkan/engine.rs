@@ -1,23 +1,24 @@
-use crate::device::Device;
-use crate::renderer::Renderer;
-use crate::{HEIGHT, WIDTH, WINDOW_NAME};
+use crate::vulkan::device::Device;
+use crate::vulkan::renderer::Renderer;
+use crate::vulkan::scene::Scene;
 use erupt::vk;
-use std::sync::Arc;
+use std::rc::Rc;
 use winit::dpi::LogicalSize;
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
-pub struct RdxEngine {
+pub struct Engine {
     window: Window,
-    device: Arc<Device>,
+    device: Rc<Device>,
     renderer: Renderer,
+    scene: Scene,
 }
 
-impl RdxEngine {
-    pub fn new() -> (RdxEngine, EventLoop<()>) {
-        let (event_loop, window) = Self::new_window(WIDTH, HEIGHT, WINDOW_NAME);
+impl Engine {
+    pub fn new(width: u32, height: u32, name: &str) -> (Engine, EventLoop<()>) {
+        let (window, event_loop) = Self::new_window(width, height, name);
 
-        let device = Arc::new(Device::new(
+        let device = Rc::new(Device::new(
             &[
                 vk::KHR_SWAPCHAIN_EXTENSION_NAME,
                 vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
@@ -28,18 +29,23 @@ impl RdxEngine {
             vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
         ));
 
-        let renderer = Renderer::new(device.clone(), &window);
+        let mut renderer = Renderer::new(device.clone());
 
-        let engine = RdxEngine {
+        let scene = Scene::new(device.clone());
+
+        renderer.create_swapchain(&window, &scene);
+
+        let engine = Engine {
             window,
             device,
             renderer,
+            scene,
         };
 
         (engine, event_loop)
     }
 
-    fn new_window(width: u32, height: u32, name: &str) -> (EventLoop<()>, Window) {
+    fn new_window(width: u32, height: u32, name: &str) -> (Window, EventLoop<()>) {
         log::debug!("Creating new Window");
         let event_loop = EventLoop::new();
 
@@ -50,11 +56,7 @@ impl RdxEngine {
             .build(&event_loop)
             .unwrap();
 
-        (event_loop, window)
-    }
-
-    pub fn init_systems(&mut self) {
-        self.renderer.init(&self.window);
+        (window, event_loop)
     }
 
     pub fn resize(&mut self) {}

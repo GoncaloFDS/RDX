@@ -1,15 +1,11 @@
-use engine::RdxEngine;
+use vulkan::engine::Engine;
 use winit::{
     dpi::PhysicalSize,
     event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
 };
 
-mod debug;
-mod device;
-mod engine;
-mod renderer;
-mod swapchain;
+mod vulkan;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -18,9 +14,7 @@ const WINDOW_NAME: &str = "Rdx - Vulkan";
 fn main() {
     env_logger::init();
 
-    let (mut engine, event_loop) = RdxEngine::new();
-
-    engine.init_systems();
+    let (mut engine, event_loop) = Engine::new(WIDTH, HEIGHT, WINDOW_NAME);
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;

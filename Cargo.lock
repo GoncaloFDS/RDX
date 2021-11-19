@@ -422,6 +422,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glam"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2c626156a479bfb5a4362c43f5abadd700af33ebc8db068089d9cb92493d6ab"
+
+[[package]]
 name = "gpu-alloc"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -846,9 +852,11 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "erupt",
+ "glam",
  "gpu-alloc",
  "gpu-alloc-erupt",
  "log",
+ "memoffset",
  "parking_lot",
  "winit",
 ]
