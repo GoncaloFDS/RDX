@@ -31,7 +31,7 @@ impl DebugMessenger {
 
             unsafe {
                 device
-                    .get_instance()
+                    .instance()
                     .create_debug_utils_messenger_ext(&messenger_info, None)
                     .unwrap()
             }
@@ -48,7 +48,7 @@ impl Drop for DebugMessenger {
         if !self.handle.is_null() {
             unsafe {
                 self.device
-                    .get_instance()
+                    .instance()
                     .destroy_debug_utils_messenger_ext(Some(self.handle), None);
             }
         }

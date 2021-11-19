@@ -4,7 +4,10 @@ use erupt::vk;
 use std::mem::size_of;
 use std::rc::Rc;
 
-pub struct UniformBufferObject {}
+pub struct UniformBufferObject {
+    view_model: glam::Mat4,
+    projection: glam::Mat4,
+}
 
 pub struct UniformBuffer {
     buffer: Buffer,
@@ -17,11 +20,12 @@ impl UniformBuffer {
 
     pub fn new(device: Rc<Device>) -> Self {
         let buffer_size = size_of::<UniformBufferObject>();
-        let buffer = Buffer::new(
+        let mut buffer = Buffer::new(
             device,
             buffer_size as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
         );
+        buffer.allocate_memory();
 
         UniformBuffer { buffer }
     }

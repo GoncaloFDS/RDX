@@ -11,6 +11,10 @@ pub struct RenderPass {
 }
 
 impl RenderPass {
+    pub fn handle(&self) -> vk::RenderPass {
+        self.handle
+    }
+
     pub fn new(
         device: Rc<Device>,
         swapchain: &Swapchain,

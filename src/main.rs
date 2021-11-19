@@ -1,3 +1,4 @@
+use simple_logger::SimpleLogger;
 use vulkan::engine::Engine;
 use winit::{
     dpi::PhysicalSize,
@@ -12,7 +13,7 @@ const HEIGHT: u32 = 600;
 const WINDOW_NAME: &str = "Rdx - Vulkan";
 
 fn main() {
-    env_logger::init();
+    SimpleLogger::new().init().unwrap();
 
     let (mut engine, event_loop) = Engine::new(WIDTH, HEIGHT, WINDOW_NAME);
 

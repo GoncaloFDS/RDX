@@ -14,6 +14,10 @@ pub struct DescriptorSetManager {
 }
 
 impl DescriptorSetManager {
+    pub fn descriptor_set_layout(&self) -> &DescriptorSetLayout {
+        &self.descriptor_set_layout
+    }
+
     pub fn new(
         device: Rc<Device>,
         descriptor_bindings: &[DescriptorBinding],

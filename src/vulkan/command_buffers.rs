@@ -84,7 +84,7 @@ impl CommandBuffers {
         let submit_buffers = [command_buffer];
         let submit_info = vk::SubmitInfoBuilder::new().command_buffers(&submit_buffers);
 
-        let graphics_queue = self.device.get_graphics_queue();
+        let graphics_queue = self.device.graphics_queue();
 
         unsafe {
             self.device

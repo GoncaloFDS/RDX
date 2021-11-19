@@ -3,9 +3,12 @@ name = "rdx"
 version = "0.1.0"
 edition = "2021"
 
+[build-dependencies]
+spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu" }
+
 [dependencies]
 log = "0.4.14"
-env_logger = "0.9.0"
+simple_logger = "1.13.0"
 
 winit = "0.25.0"
 

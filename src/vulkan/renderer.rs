@@ -31,7 +31,7 @@ impl Renderer {
         let debug_messenger = DebugMessenger::new(device.clone());
 
         let mut command_buffers =
-            CommandBuffers::new(device.clone(), device.get_graphics_family_index(), true);
+            CommandBuffers::new(device.clone(), device.graphics_family_index(), true);
 
         Renderer {
             device,
@@ -55,7 +55,12 @@ impl Renderer {
         };
         self.command_buffers.allocate(3);
 
-        self.swapchain = Some(Swapchain::new(self.device.clone(), window));
+        self.swapchain = Some(Swapchain::new(
+            self.device.clone(),
+            window,
+            vk::PresentModeKHR::MAILBOX_KHR,
+        ));
+
         self.depth_buffer = Some(DepthBuffer::new(
             self.device.clone(),
             &self.command_buffers,
@@ -63,7 +68,7 @@ impl Renderer {
         ));
 
         let swapchain = self.swapchain.as_ref().unwrap();
-        for _ in swapchain.swapchain_images() {
+        for _ in swapchain.images() {
             self.present_semaphores
                 .push(Semaphore::new(self.device.clone()));
             self.render_semaphores
@@ -84,10 +89,10 @@ impl Renderer {
         ));
 
         let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap();
-        for swapchain_image in swapchain.swapchain_images() {
+        for swapchain_image_view in swapchain.image_views() {
             self.framebuffers.push(Framebuffer::new(
                 self.device.clone(),
-                &swapchain_image.view,
+                &swapchain_image_view,
                 graphics_pipeline.render_pass(),
                 &swapchain,
                 depth_buffer,

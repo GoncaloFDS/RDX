@@ -77,8 +77,8 @@ fn find_supported_format(
         .find(|format| {
             let format_properties = unsafe {
                 device
-                    .get_instance()
-                    .get_physical_device_format_properties(device.get_physical_device(), **format)
+                    .instance()
+                    .get_physical_device_format_properties(device.physical_device(), **format)
             };
 
             match tiling {

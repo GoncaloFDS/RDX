@@ -1,6 +1,6 @@
 use crate::vulkan::debug_utils;
 use crate::vulkan::instance::Instance;
-use erupt::{vk, DeviceLoader, ExtendableFromConst, InstanceLoader};
+use erupt::{vk, DeviceLoader, ExtendableFromConst, ExtendableFromMut, InstanceLoader};
 use gpu_alloc::{GpuAllocator, MemoryBlock};
 use gpu_alloc_erupt::EruptMemoryDevice;
 use parking_lot::Mutex;
@@ -23,19 +23,19 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn get_instance(&self) -> &Instance {
+    pub fn instance(&self) -> &Instance {
         &self.instance
     }
 
-    pub fn get_physical_device(&self) -> vk::PhysicalDevice {
+    pub fn physical_device(&self) -> vk::PhysicalDevice {
         self.physical_device
     }
 
-    pub fn get_graphics_queue(&self) -> vk::Queue {
+    pub fn graphics_queue(&self) -> vk::Queue {
         self.graphics_queue
     }
 
-    pub fn get_graphics_family_index(&self) -> u32 {
+    pub fn graphics_family_index(&self) -> u32 {
         self.queue_family_indices.graphics
     }
 
@@ -93,31 +93,31 @@ impl Device {
             device_layers.push(debug_utils::VALIDATION_LAYER);
         }
 
-        // Hardcoded here because I don't know how to make this configurable
-        let mut buffer_device_address_features =
+        let buffer_device_address_features =
             vk::PhysicalDeviceBufferDeviceAddressFeaturesBuilder::new().buffer_device_address(true);
-        let mut indexing_features = vk::PhysicalDeviceDescriptorIndexingFeaturesBuilder::new()
+        let indexing_features = vk::PhysicalDeviceDescriptorIndexingFeaturesBuilder::new()
             .runtime_descriptor_array(true);
-        let mut reset_query_features =
+        let reset_query_features =
             vk::PhysicalDeviceHostQueryResetFeaturesBuilder::new().host_query_reset(true);
-        let mut acceleration_structure_features =
+        let acceleration_structure_features =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder::new()
                 .acceleration_structure(true);
-        let mut ray_tracing_features =
-            vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
-                .ray_tracing_pipeline(true);
+        let ray_tracing_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
+            .ray_tracing_pipeline(true);
+        let vulkan_memory_model_features =
+            vk::PhysicalDeviceVulkanMemoryModelFeaturesBuilder::new().vulkan_memory_model(true);
 
         let device_create_info = vk::DeviceCreateInfoBuilder::new()
             .queue_create_infos(&queue_create_infos)
             .enabled_features(&enabled_features)
             .enabled_extension_names(&device_extensions)
             .enabled_layer_names(&device_layers)
-            // Hardcoded here because I don't know how to make this configurable
-            .extend_from(&mut buffer_device_address_features)
-            .extend_from(&mut indexing_features)
-            .extend_from(&mut reset_query_features)
-            .extend_from(&mut acceleration_structure_features)
-            .extend_from(&mut ray_tracing_features);
+            .extend_from(&buffer_device_address_features)
+            .extend_from(&indexing_features)
+            .extend_from(&reset_query_features)
+            .extend_from(&acceleration_structure_features)
+            .extend_from(&ray_tracing_features)
+            .extend_from(&vulkan_memory_model_features);
 
         let device = unsafe {
             DeviceLoader::new(

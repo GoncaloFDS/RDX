@@ -11,9 +11,12 @@ pub struct Surface {
 }
 
 impl Surface {
+    pub fn handle(&self) -> vk::SurfaceKHR {
+        self.handle
+    }
+
     pub fn new(device: Rc<Device>, window: &Window) -> Self {
-        let surface =
-            unsafe { surface::create_surface(device.get_instance(), window, None).unwrap() };
+        let surface = unsafe { surface::create_surface(device.instance(), window, None).unwrap() };
 
         Surface {
             handle: surface,
@@ -27,17 +30,9 @@ impl Drop for Surface {
         if !self.handle.is_null() {
             unsafe {
                 self.device
-                    .get_instance()
+                    .instance()
                     .destroy_surface_khr(Some(self.handle), None)
             }
         }
-    }
-}
-
-impl Deref for Surface {
-    type Target = vk::SurfaceKHR;
-
-    fn deref(&self) -> &Self::Target {
-        &self.handle
     }
 }
