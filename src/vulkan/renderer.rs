@@ -107,8 +107,23 @@ impl Renderer {
         self.command_pool.allocate(swapchain.images().len() as _);
     }
 
-    pub fn delete_swapchain(&mut self) {}
-    pub fn recreate_swapchain(&mut self) {}
+    pub fn delete_swapchain(&mut self) {
+        self.command_pool.reset();
+        self.swapchain = None;
+        self.graphics_pipeline = None;
+        self.depth_buffer = None;
+        self.uniform_buffers.clear();
+        self.framebuffers.clear();
+        self.fences.clear();
+        self.present_semaphores.clear();
+        self.render_semaphores.clear();
+    }
+
+    pub fn recreate_swapchain(&mut self, window: &Window, scene: &Scene) {
+        self.device.wait_idle();
+        self.delete_swapchain();
+        self.create_swapchain(window, scene);
+    }
 
     pub fn draw_frame(&mut self) {
         let fence = &self.fences[self.current_frame];
@@ -119,43 +134,47 @@ impl Renderer {
         fence.wait(timeout);
 
         let swapchain = self.swapchain.as_ref().unwrap();
-        if let Some(image_index) =
+
+        if let Some(current_frame) =
             swapchain.acquire_next_image(timeout, Some(render_semaphore.handle()))
         {
-            let command_buffer = self.command_pool.begin(image_index as _);
-            self.render(command_buffer, image_index);
-            self.command_pool.end(image_index as _);
-
-            fence.reset();
-
-            self.device.submit(
-                &[command_buffer.handle()],
-                &[render_semaphore.handle()],
-                &[present_semaphore.handle()],
-                &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
-                Some(fence.handle()),
-            );
-
-            self.device.present(
-                &[present_semaphore.handle()],
-                &[swapchain.handle()],
-                &[image_index],
-            );
-
-            self.current_frame = (self.current_frame + 1) % self.fences.len();
+            self.current_frame = current_frame;
         } else {
-            self.recreate_swapchain();
+            log::debug!("failed to acquire next image");
+            return;
         }
+
+        let command_buffer = self.command_pool.begin(self.current_frame as _);
+        self.render(command_buffer, self.current_frame);
+        self.command_pool.end(self.current_frame as _);
+
+        fence.reset();
+
+        self.device.submit(
+            &[command_buffer.handle()],
+            &[render_semaphore.handle()],
+            &[present_semaphore.handle()],
+            &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+            Some(fence.handle()),
+        );
+
+        self.device.present(
+            &[present_semaphore.handle()],
+            &[swapchain.handle()],
+            &[self.current_frame as u32],
+        );
+
+        self.current_frame = (self.current_frame + 1) % self.fences.len();
     }
 
-    fn render(&self, command_buffer: CommandBuffer, image_index: u32) {
+    fn render(&self, command_buffer: CommandBuffer, image_index: usize) {
         let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap();
         let swapchain = self.swapchain.as_ref().unwrap();
 
         command_buffer.begin_render_pass(
             &self.device,
             graphics_pipeline.render_pass().handle(),
-            self.framebuffers[image_index as usize].handle(),
+            self.framebuffers[image_index].handle(),
             swapchain.extent(),
         );
 

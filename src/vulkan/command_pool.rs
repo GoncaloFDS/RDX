@@ -41,6 +41,10 @@ impl CommandPool {
             .collect::<Vec<_>>();
     }
 
+    pub fn reset(&mut self) {
+        self.command_buffers.clear();
+    }
+
     pub fn begin(&self, i: usize) -> CommandBuffer {
         let command_buffer = self.command_buffers[i];
         command_buffer.begin(&self.device);

@@ -59,7 +59,9 @@ impl Engine {
         (window, event_loop)
     }
 
-    pub fn resize(&mut self) {}
+    pub fn resize(&mut self) {
+        self.renderer.recreate_swapchain(&self.window, &self.scene);
+    }
 
     pub fn run(&mut self) {
         self.renderer.draw_frame();

@@ -156,13 +156,13 @@ impl Swapchain {
         &self,
         timeout: u64,
         semaphore: Option<vk::Semaphore>,
-    ) -> Option<u32> {
+    ) -> Option<usize> {
         let result = unsafe {
             self.device
                 .acquire_next_image_khr(self.handle, timeout, semaphore, None)
         };
         match result.result() {
-            Ok(image) => Some(image),
+            Ok(image) => Some(image as usize),
             Err(e) => match e {
                 vk::Result::SUBOPTIMAL_KHR | vk::Result::ERROR_OUT_OF_DATE_KHR => None,
                 _ => panic!("Failed to acquire_next_image"),
