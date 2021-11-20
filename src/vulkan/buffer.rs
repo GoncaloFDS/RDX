@@ -2,7 +2,6 @@ use crate::vulkan::device::Device;
 use crate::vulkan::device_memory::DeviceMemory;
 use erupt::vk;
 use std::rc::Rc;
-use winit::event::VirtualKeyCode::S;
 
 pub struct Buffer {
     device: Rc<Device>,

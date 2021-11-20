@@ -1,6 +1,6 @@
 use crate::vulkan::debug_utils;
 use crate::vulkan::instance::Instance;
-use erupt::{vk, DeviceLoader, ExtendableFromConst, ExtendableFromMut, InstanceLoader};
+use erupt::{vk, DeviceLoader, ExtendableFromConst, InstanceLoader};
 use gpu_alloc::{GpuAllocator, MemoryBlock};
 use gpu_alloc_erupt::EruptMemoryDevice;
 use parking_lot::Mutex;
@@ -154,29 +154,6 @@ impl Device {
         }
     }
 
-    pub fn get_supported_depth_format(&self) -> vk::Format {
-        let depth_formats = [
-            vk::Format::D32_SFLOAT_S8_UINT,
-            vk::Format::D32_SFLOAT,
-            vk::Format::D24_UNORM_S8_UINT,
-            vk::Format::D16_UNORM_S8_UINT,
-            vk::Format::D16_UNORM,
-        ];
-
-        *depth_formats
-            .iter()
-            .find(|format| {
-                let format_props = unsafe {
-                    self.instance
-                        .get_physical_device_format_properties(self.physical_device, **format)
-                };
-                format_props
-                    .optimal_tiling_features
-                    .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT)
-            })
-            .unwrap()
-    }
-
     pub fn gpu_alloc_memory(
         &self,
         mem_reqs: vk::MemoryRequirements,
@@ -185,7 +162,7 @@ impl Device {
             self.allocator
                 .lock()
                 .alloc(
-                    EruptMemoryDevice::wrap(&self.handle),
+                    EruptMemoryDevice::wrap(&self),
                     gpu_alloc::Request {
                         size: mem_reqs.size,
                         align_mask: mem_reqs.alignment - 1,
@@ -201,8 +178,48 @@ impl Device {
         unsafe {
             self.allocator
                 .lock()
-                .dealloc(EruptMemoryDevice::wrap(&self.handle), mem_block);
+                .dealloc(EruptMemoryDevice::wrap(&self), mem_block);
         }
+    }
+
+    pub fn submit(
+        &self,
+        command_buffers: &[vk::CommandBuffer],
+        wait: &[vk::Semaphore],
+        signal: &[vk::Semaphore],
+        wait_stages: &[vk::PipelineStageFlags],
+        fence: Option<vk::Fence>,
+    ) {
+        let submit_info = [vk::SubmitInfoBuilder::new()
+            .command_buffers(command_buffers)
+            .wait_semaphores(wait)
+            .signal_semaphores(signal)
+            .wait_dst_stage_mask(wait_stages)];
+
+        unsafe {
+            self.queue_submit(self.graphics_queue, &submit_info, fence)
+                .unwrap()
+        }
+    }
+
+    pub fn present(
+        &self,
+        wait: &[vk::Semaphore],
+        swapchains: &[vk::SwapchainKHR],
+        images_indices: &[u32],
+    ) {
+        let present_info = vk::PresentInfoKHRBuilder::new()
+            .wait_semaphores(wait)
+            .swapchains(swapchains)
+            .image_indices(images_indices);
+        unsafe {
+            self.queue_present_khr(self.graphics_queue, &present_info)
+                .unwrap()
+        }
+    }
+
+    pub fn wait_idle(&self) {
+        unsafe { self.device_wait_idle().unwrap() }
     }
 }
 
@@ -210,7 +227,7 @@ impl Drop for Device {
     fn drop(&mut self) {
         log::debug!("Dropping device");
         unsafe {
-            self.handle.destroy_device(None);
+            self.destroy_device(None);
             self.instance.destroy_instance(None);
         }
     }

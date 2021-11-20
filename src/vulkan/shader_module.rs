@@ -1,8 +1,6 @@
 use crate::vulkan::device::Device;
 use erupt::vk;
-use std::ffi::{CStr, CString};
-use std::fs::File;
-use std::io::Read;
+use std::ffi::CStr;
 use std::rc::Rc;
 use std::{env, ptr};
 
@@ -14,19 +12,6 @@ pub struct ShaderModule {
 impl ShaderModule {
     pub fn new(device: Rc<Device>) -> Self {
         let shader: &[u8] = include_bytes!(env!("raster.spv"));
-        // let path = env::current_dir()
-        //     .unwrap()
-        //     .join("assets")
-        //     .join("shaders")
-        //     .join(filename);
-        // let mut shader_file =
-        //     File::open(path).unwrap_or_else(|_| panic!("Failed to open shader file: {}", filename));
-        // let mut bytes = vec![];
-        // shader_file.read_to_end(&mut bytes).unwrap();
-        //
-        // let spv = erupt::utils::decode_spv(&bytes).unwrap();
-
-        // let create_info = vk::ShaderModuleCreateInfoBuilder::new().code(shader);
 
         let create_info = vk::ShaderModuleCreateInfo {
             s_type: vk::StructureType::SHADER_MODULE_CREATE_INFO,

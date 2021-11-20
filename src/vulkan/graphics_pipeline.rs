@@ -10,10 +10,7 @@ use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::uniform_buffer::UniformBuffer;
 use crate::vulkan::vertex::Vertex;
 use erupt::vk;
-use std::env;
 use std::ffi::CStr;
-use std::fs::File;
-use std::io::Read;
 use std::rc::Rc;
 
 pub struct GraphicsPipeline {

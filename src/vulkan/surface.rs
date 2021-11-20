@@ -1,7 +1,6 @@
 use crate::vulkan::device::Device;
 use erupt::utils::surface;
 use erupt::vk;
-use std::ops::Deref;
 use std::rc::Rc;
 use winit::window::Window;
 

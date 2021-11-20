@@ -1,4 +1,4 @@
-use crate::vulkan::command_buffers::CommandBuffers;
+use crate::vulkan::command_pool::CommandPool;
 use crate::vulkan::device::Device;
 use crate::vulkan::image::Image;
 use crate::vulkan::image_view::ImageView;
@@ -20,7 +20,7 @@ impl DepthBuffer {
         self.format
     }
 
-    pub fn new(device: Rc<Device>, command_buffers: &CommandBuffers, extent: vk::Extent2D) -> Self {
+    pub fn new(device: Rc<Device>, command_buffers: &CommandPool, extent: vk::Extent2D) -> Self {
         let format = find_depth_format(&device);
         let mut image = Image::new(
             device.clone(),

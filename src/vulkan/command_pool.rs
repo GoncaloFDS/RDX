@@ -1,15 +1,15 @@
+use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
 use erupt::vk;
-use std::ops::Deref;
 use std::rc::Rc;
 
-pub struct CommandBuffers {
+pub struct CommandPool {
     device: Rc<Device>,
     command_pool: vk::CommandPool,
-    command_buffers: Vec<vk::CommandBuffer>,
+    command_buffers: Vec<CommandBuffer>,
 }
 
-impl CommandBuffers {
+impl CommandPool {
     pub fn new(device: Rc<Device>, queue_family_index: u32, reset: bool) -> Self {
         let create_info = vk::CommandPoolCreateInfoBuilder::new()
             .queue_family_index(queue_family_index)
@@ -20,7 +20,7 @@ impl CommandBuffers {
             });
         let command_pool = unsafe { device.create_command_pool(&create_info, None).unwrap() };
 
-        CommandBuffers {
+        CommandPool {
             device,
             command_pool,
             command_buffers: vec![],
@@ -33,30 +33,22 @@ impl CommandBuffers {
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(count);
 
-        let mut command_buffers =
-            unsafe { self.device.allocate_command_buffers(&alloc_info).unwrap() };
+        let command_buffers = unsafe { self.device.allocate_command_buffers(&alloc_info).unwrap() };
 
-        self.command_buffers.append(&mut command_buffers);
+        self.command_buffers = command_buffers
+            .iter()
+            .map(|cb| CommandBuffer::new(*cb))
+            .collect::<Vec<_>>();
     }
 
-    pub fn begin(&self, i: usize) -> vk::CommandBuffer {
-        let begin_info = vk::CommandBufferBeginInfoBuilder::new()
-            .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
-        unsafe {
-            self.device
-                .begin_command_buffer(self.command_buffers[i], &begin_info)
-                .unwrap()
-        }
-
-        self.command_buffers[i]
+    pub fn begin(&self, i: usize) -> CommandBuffer {
+        let command_buffer = self.command_buffers[i];
+        command_buffer.begin(&self.device);
+        command_buffer
     }
 
     pub fn end(&self, i: usize) {
-        unsafe {
-            self.device
-                .end_command_buffer(self.command_buffers[i])
-                .unwrap();
-        }
+        self.command_buffers[i].end(&self.device);
     }
 
     pub fn single_time_submit(&self, action: impl Fn(vk::CommandBuffer)) {
@@ -95,13 +87,18 @@ impl CommandBuffers {
     }
 }
 
-impl Drop for CommandBuffers {
+impl Drop for CommandPool {
     fn drop(&mut self) {
         unsafe {
             self.device.device_wait_idle().unwrap();
             if !self.command_buffers.is_empty() {
+                let command_buffers = self
+                    .command_buffers
+                    .iter()
+                    .map(|cb| cb.handle())
+                    .collect::<Vec<_>>();
                 self.device
-                    .free_command_buffers(self.command_pool, &self.command_buffers);
+                    .free_command_buffers(self.command_pool, &command_buffers);
             }
             self.device
                 .destroy_command_pool(Some(self.command_pool), None);

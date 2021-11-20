@@ -1,4 +1,4 @@
-use crate::vulkan::command_buffers::CommandBuffers;
+use crate::vulkan::command_pool::CommandPool;
 use crate::vulkan::depth_buffer::DepthBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::device_memory::DeviceMemory;
@@ -65,7 +65,7 @@ impl Image {
 
     pub fn transition_image_layout(
         &mut self,
-        command_buffers: &CommandBuffers,
+        command_buffers: &CommandPool,
         new_layout: vk::ImageLayout,
     ) {
         command_buffers.single_time_submit(|command_buffer| {

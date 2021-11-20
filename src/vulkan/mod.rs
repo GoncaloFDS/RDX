@@ -1,7 +1,8 @@
 pub mod engine;
 
 mod buffer;
-mod command_buffers;
+mod command_buffer;
+mod command_pool;
 mod debug_utils;
 mod depth_buffer;
 mod descriptor_binding;
