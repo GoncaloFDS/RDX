@@ -26,6 +26,10 @@ pub struct GraphicsPipeline {
 }
 
 impl GraphicsPipeline {
+    pub fn handle(&self) -> vk::Pipeline {
+        self.handle
+    }
+
     pub fn render_pass(&self) -> &RenderPass {
         &self.render_pass
     }
@@ -157,8 +161,8 @@ impl GraphicsPipeline {
             device.clone(),
             swapchain,
             depth_buffer,
-            vk::AttachmentLoadOp::DONT_CARE,
-            vk::AttachmentLoadOp::DONT_CARE,
+            vk::AttachmentLoadOp::CLEAR,
+            vk::AttachmentLoadOp::CLEAR,
         );
 
         let shader_module = ShaderModule::new(device.clone());

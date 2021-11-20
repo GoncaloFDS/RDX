@@ -8,6 +8,10 @@ pub struct Fence {
 }
 
 impl Fence {
+    pub fn handle(&self) -> vk::Fence {
+        self.handle
+    }
+
     pub fn new(device: Rc<Device>, signaled: bool) -> Self {
         let create_info = vk::FenceCreateInfoBuilder::new().flags(if signaled {
             vk::FenceCreateFlags::SIGNALED

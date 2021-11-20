@@ -1,8 +1,6 @@
 use crate::vulkan::device::Device;
-use crate::vulkan::image::Image;
 use crate::vulkan::image_view::ImageView;
 use crate::vulkan::surface::Surface;
-use erupt::extensions::khr_surface::SurfaceCapabilitiesKHR;
 use erupt::vk;
 use std::rc::Rc;
 use winit::window::Window;
@@ -27,6 +25,10 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
+    pub fn handle(&self) -> vk::SwapchainKHR {
+        self.handle
+    }
+
     pub fn format(&self) -> vk::Format {
         self.format
     }
@@ -147,6 +149,24 @@ impl Swapchain {
             capabilities,
             formats,
             present_modes,
+        }
+    }
+
+    pub fn acquire_next_image(
+        &self,
+        timeout: u64,
+        semaphore: Option<vk::Semaphore>,
+    ) -> Option<u32> {
+        let result = unsafe {
+            self.device
+                .acquire_next_image_khr(self.handle, timeout, semaphore, None)
+        };
+        match result.result() {
+            Ok(image) => Some(image),
+            Err(e) => match e {
+                vk::Result::SUBOPTIMAL_KHR | vk::Result::ERROR_OUT_OF_DATE_KHR => None,
+                _ => panic!("Failed to acquire_next_image"),
+            },
         }
     }
 

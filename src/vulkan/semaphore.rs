@@ -8,6 +8,10 @@ pub struct Semaphore {
 }
 
 impl Semaphore {
+    pub fn handle(&self) -> vk::Semaphore {
+        self.handle
+    }
+
     pub fn new(device: Rc<Device>) -> Self {
         let create_info = vk::SemaphoreCreateInfoBuilder::default();
         let semaphore = unsafe { device.create_semaphore(&create_info, None).unwrap() };

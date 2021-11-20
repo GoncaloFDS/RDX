@@ -47,6 +47,7 @@ fn main() {
                 ..
             } => {
                 if code == VirtualKeyCode::Escape {
+                    engine.shutdown();
                     *control_flow = ControlFlow::Exit
                 }
             }

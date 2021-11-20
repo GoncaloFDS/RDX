@@ -12,6 +12,10 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
+    pub fn handle(&self) -> vk::Framebuffer {
+        self.handle
+    }
+
     pub fn new(
         device: Rc<Device>,
         image_view: &ImageView,

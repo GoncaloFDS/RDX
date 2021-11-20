@@ -98,6 +98,7 @@ impl CommandBuffers {
 impl Drop for CommandBuffers {
     fn drop(&mut self) {
         unsafe {
+            self.device.device_wait_idle().unwrap();
             if !self.command_buffers.is_empty() {
                 self.device
                     .free_command_buffers(self.command_pool, &self.command_buffers);
@@ -105,13 +106,5 @@ impl Drop for CommandBuffers {
             self.device
                 .destroy_command_pool(Some(self.command_pool), None);
         }
-    }
-}
-
-impl Deref for CommandBuffers {
-    type Target = vk::CommandPool;
-
-    fn deref(&self) -> &Self::Target {
-        &self.command_pool
     }
 }

@@ -61,5 +61,11 @@ impl Engine {
 
     pub fn resize(&mut self) {}
 
-    pub fn run(&mut self) {}
+    pub fn run(&mut self) {
+        self.renderer.draw_frame();
+    }
+
+    pub fn shutdown(&self) {
+        self.renderer.shutdown();
+    }
 }
