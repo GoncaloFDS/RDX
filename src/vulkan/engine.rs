@@ -33,7 +33,7 @@ impl Engine {
 
         let scene = Scene::new(device.clone());
 
-        renderer.create_swapchain(&window, &scene);
+        renderer.setup(&window, &scene);
 
         let engine = Engine {
             window,

@@ -52,62 +52,17 @@ impl Renderer {
         }
     }
 
-    pub fn create_swapchain(&mut self, window: &Window, scene: &Scene) {
-        let extent = vk::Extent2D {
-            width: window.inner_size().width,
-            height: window.inner_size().height,
-        };
-        self.command_pool.allocate(3);
-
-        self.swapchain = Some(Swapchain::new(
-            self.device.clone(),
-            window,
-            vk::PresentModeKHR::MAILBOX_KHR,
-        ));
-
-        self.depth_buffer = Some(DepthBuffer::new(
-            self.device.clone(),
-            &self.command_pool,
-            extent,
-        ));
-
-        let swapchain = self.swapchain.as_ref().unwrap();
-        for _ in swapchain.images() {
-            self.present_semaphores
-                .push(Semaphore::new(self.device.clone()));
-            self.render_semaphores
-                .push(Semaphore::new(self.device.clone()));
-            self.fences.push(Fence::new(self.device.clone(), true));
-            self.uniform_buffers
-                .push(UniformBuffer::new(self.device.clone()));
-        }
-
-        let depth_buffer = self.depth_buffer.as_ref().unwrap();
-        self.graphics_pipeline = Some(GraphicsPipeline::new(
-            self.device.clone(),
-            swapchain,
-            depth_buffer,
-            &self.uniform_buffers,
-            scene,
-            false,
-        ));
-
-        let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap();
-
-        for swapchain_image_view in swapchain.image_views() {
-            self.framebuffers.push(Framebuffer::new(
-                self.device.clone(),
-                swapchain_image_view,
-                graphics_pipeline.render_pass(),
-                swapchain,
-                depth_buffer,
-            ));
-        }
-
-        self.command_pool.allocate(swapchain.images().len() as _);
+    pub fn setup(&mut self, window: &Window, scene: &Scene) {
+        self.create_swapchain(window);
+        self.create_uniform_buffers();
+        self.create_depth_buffer(window);
+        self.create_pipelines(scene);
+        self.create_framebuffers();
+        self.create_command_buffers();
+        self.create_sync_structures();
     }
 
-    pub fn delete_swapchain(&mut self) {
+    fn delete_swapchain(&mut self) {
         self.command_pool.reset();
         self.swapchain = None;
         self.graphics_pipeline = None;
@@ -122,7 +77,7 @@ impl Renderer {
     pub fn recreate_swapchain(&mut self, window: &Window, scene: &Scene) {
         self.device.wait_idle();
         self.delete_swapchain();
-        self.create_swapchain(window, scene);
+        self.setup(window, scene);
     }
 
     pub fn draw_frame(&mut self) {
@@ -191,5 +146,75 @@ impl Renderer {
 
     pub fn shutdown(&self) {
         self.device.wait_idle();
+    }
+
+    fn create_swapchain(&mut self, window: &Window) {
+        self.swapchain = Some(Swapchain::new(
+            self.device.clone(),
+            window,
+            vk::PresentModeKHR::MAILBOX_KHR,
+        ));
+    }
+
+    fn create_depth_buffer(&mut self, window: &Window) {
+        let extent = vk::Extent2D {
+            width: window.inner_size().width,
+            height: window.inner_size().height,
+        };
+        self.depth_buffer = Some(DepthBuffer::new(
+            self.device.clone(),
+            &self.command_pool,
+            extent,
+        ));
+    }
+
+    fn create_framebuffers(&mut self) {
+        let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap();
+        let swapchain = self.swapchain.as_ref().unwrap();
+        let depth_buffer = self.depth_buffer.as_ref().unwrap();
+        for swapchain_image_view in swapchain.image_views() {
+            self.framebuffers.push(Framebuffer::new(
+                self.device.clone(),
+                swapchain_image_view,
+                graphics_pipeline.render_pass(),
+                swapchain,
+                depth_buffer,
+            ));
+        }
+    }
+
+    fn create_pipelines(&mut self, scene: &Scene) {
+        let swapchain = self.swapchain.as_ref().unwrap();
+        let depth_buffer = self.depth_buffer.as_ref().unwrap();
+        self.graphics_pipeline = Some(GraphicsPipeline::new(
+            self.device.clone(),
+            swapchain,
+            depth_buffer,
+            &self.uniform_buffers,
+            scene,
+            false,
+        ));
+    }
+
+    fn create_command_buffers(&mut self) {
+        let count = self.swapchain.as_ref().unwrap().images().len();
+        self.command_pool.allocate(count as _);
+    }
+
+    fn create_sync_structures(&mut self) {
+        let count = self.swapchain.as_ref().unwrap().images().len();
+
+        self.present_semaphores
+            .resize_with(count, || Semaphore::new(self.device.clone()));
+        self.render_semaphores
+            .resize_with(count, || Semaphore::new(self.device.clone()));
+        self.fences
+            .resize_with(count, || Fence::new(self.device.clone(), true));
+    }
+
+    fn create_uniform_buffers(&mut self) {
+        let count = self.swapchain.as_ref().unwrap().images().len();
+        self.uniform_buffers
+            .resize_with(count, || UniformBuffer::new(self.device.clone()));
     }
 }

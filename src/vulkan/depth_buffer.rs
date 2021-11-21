@@ -46,10 +46,10 @@ impl DepthBuffer {
     }
 
     pub fn has_stencil_component(format: vk::Format) -> bool {
-        match format {
-            vk::Format::D32_SFLOAT_S8_UINT | vk::Format::D24_UNORM_S8_UINT => true,
-            _ => false,
-        }
+        matches!(
+            format,
+            vk::Format::D32_SFLOAT_S8_UINT | vk::Format::D24_UNORM_S8_UINT
+        )
     }
 }
 
