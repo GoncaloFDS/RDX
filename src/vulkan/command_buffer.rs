@@ -1,5 +1,7 @@
+use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
 use erupt::vk;
+use log::debug;
 
 #[derive(Copy, Clone)]
 pub struct CommandBuffer {
@@ -85,6 +87,33 @@ impl CommandBuffer {
     ) {
         unsafe {
             device.cmd_bind_pipeline(self.handle, bind_point, pipeline);
+        }
+    }
+
+    pub fn bind_vertex_buffer(&self, device: &Device, vertex_buffers: &[Buffer]) {
+        let vertex_buffers = vertex_buffers
+            .iter()
+            .map(|buffer| buffer.handle())
+            .collect::<Vec<_>>();
+        unsafe {
+            device.cmd_bind_vertex_buffers(self.handle, 0, &vertex_buffers, &[0]);
+        }
+    }
+
+    pub fn bind_index_buffer(&self, device: &Device, index_buffer: &Buffer) {
+        unsafe {
+            device.cmd_bind_index_buffer(
+                self.handle,
+                index_buffer.handle(),
+                0,
+                vk::IndexType::UINT32,
+            )
+        }
+    }
+
+    pub fn draw_indexed(&self, device: &Device) {
+        unsafe {
+            device.cmd_draw_indexed(self.handle, 3, 1, 0, 0, 0);
         }
     }
 }

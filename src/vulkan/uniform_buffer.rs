@@ -25,7 +25,7 @@ impl UniformBuffer {
             buffer_size as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
         );
-        buffer.allocate_memory();
+        buffer.allocate_memory(gpu_alloc::UsageFlags::empty());
 
         UniformBuffer { buffer }
     }

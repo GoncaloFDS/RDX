@@ -16,6 +16,7 @@ mod graphics_pipeline;
 mod image;
 mod image_view;
 mod instance;
+mod model;
 mod pipeline_layout;
 mod render_pass;
 mod renderer;

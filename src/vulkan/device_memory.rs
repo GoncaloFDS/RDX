@@ -1,7 +1,9 @@
 use crate::vulkan::device::Device;
 use erupt::vk;
 use gpu_alloc::MemoryBlock;
+use gpu_alloc_erupt::EruptMemoryDevice;
 use std::mem::ManuallyDrop;
+use std::ptr::NonNull;
 use std::rc::Rc;
 
 pub struct DeviceMemory {
@@ -10,8 +12,12 @@ pub struct DeviceMemory {
 }
 
 impl DeviceMemory {
-    pub fn new(device: Rc<Device>, mem_reqs: vk::MemoryRequirements) -> Self {
-        let mem_block = ManuallyDrop::new(device.gpu_alloc_memory(mem_reqs));
+    pub fn new(
+        device: Rc<Device>,
+        mem_reqs: vk::MemoryRequirements,
+        allocation_flags: gpu_alloc::UsageFlags,
+    ) -> Self {
+        let mem_block = ManuallyDrop::new(device.gpu_alloc_memory(mem_reqs, allocation_flags));
         DeviceMemory { mem_block, device }
     }
 
@@ -28,6 +34,20 @@ impl DeviceMemory {
             self.device
                 .bind_buffer_memory(buffer, *self.mem_block.memory(), self.mem_block.offset())
                 .unwrap();
+        }
+    }
+
+    pub fn map(&mut self, offset: u64, size: usize) -> NonNull<u8> {
+        unsafe {
+            self.mem_block
+                .map(EruptMemoryDevice::wrap(&self.device), offset, size)
+                .unwrap()
+        }
+    }
+
+    pub fn unmap(&mut self) {
+        unsafe {
+            self.mem_block.unmap(EruptMemoryDevice::wrap(&self.device));
         }
     }
 }

@@ -12,12 +12,6 @@ pub struct Device {
     instance: Instance,
     allocator: Mutex<GpuAllocator<vk::DeviceMemory>>,
     physical_device: vk::PhysicalDevice,
-    properties: vk::PhysicalDeviceProperties,
-    features: vk::PhysicalDeviceFeatures,
-    enabled_features: vk::PhysicalDeviceFeatures,
-    memory_properties: vk::PhysicalDeviceMemoryProperties,
-    supported_extensions: Vec<String>,
-    queue_family_properties: Vec<vk::QueueFamilyProperties>,
     queue_family_indices: QueueFamilyIndices,
     graphics_queue: vk::Queue,
 }
@@ -75,7 +69,7 @@ impl Device {
             unimplemented!()
         }
 
-        let enabled_features = vk::PhysicalDeviceFeatures::default();
+        let enabled_features = vk::PhysicalDeviceFeaturesBuilder::new().fill_mode_non_solid(true);
 
         let mut device_extensions = enabled_extensions.to_vec();
         unsafe {
@@ -143,12 +137,6 @@ impl Device {
             allocator,
             instance,
             physical_device,
-            properties,
-            features,
-            enabled_features,
-            memory_properties,
-            supported_extensions,
-            queue_family_properties,
             queue_family_indices,
             graphics_queue,
         }
@@ -157,6 +145,7 @@ impl Device {
     pub fn gpu_alloc_memory(
         &self,
         mem_reqs: vk::MemoryRequirements,
+        allocation_flags: gpu_alloc::UsageFlags,
     ) -> gpu_alloc::MemoryBlock<vk::DeviceMemory> {
         unsafe {
             self.allocator
@@ -166,7 +155,7 @@ impl Device {
                     gpu_alloc::Request {
                         size: mem_reqs.size,
                         align_mask: mem_reqs.alignment - 1,
-                        usage: gpu_alloc::UsageFlags::empty(),
+                        usage: allocation_flags,
                         memory_types: mem_reqs.memory_type_bits,
                     },
                 )

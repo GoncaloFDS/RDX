@@ -1,3 +1,4 @@
+use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::command_pool::CommandPool;
 use crate::vulkan::debug_utils::DebugMessenger;
@@ -10,7 +11,9 @@ use crate::vulkan::scene::Scene;
 use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::uniform_buffer::UniformBuffer;
+use crate::vulkan::vertex::Vertex;
 use erupt::vk;
+use std::mem::size_of;
 use std::rc::Rc;
 use winit::window::Window;
 
@@ -25,6 +28,8 @@ pub struct Renderer {
     present_semaphores: Vec<Semaphore>,
     render_semaphores: Vec<Semaphore>,
     fences: Vec<Fence>,
+    vertex_buffers: Vec<Buffer>,
+    index_buffers: Vec<Buffer>,
     uniform_buffers: Vec<UniformBuffer>,
     current_frame: usize,
 }
@@ -33,13 +38,12 @@ impl Renderer {
     pub fn new(device: Rc<Device>) -> Self {
         let debug_messenger = DebugMessenger::new(device.clone());
 
-        let command_buffers =
-            CommandPool::new(device.clone(), device.graphics_family_index(), true);
+        let command_pool = CommandPool::new(device.clone(), device.graphics_family_index(), true);
 
         Renderer {
             device,
             _debug_messenger: debug_messenger,
-            command_pool: command_buffers,
+            command_pool,
             swapchain: None,
             depth_buffer: None,
             graphics_pipeline: None,
@@ -47,16 +51,18 @@ impl Renderer {
             present_semaphores: vec![],
             render_semaphores: vec![],
             fences: vec![],
+            vertex_buffers: vec![],
+            index_buffers: vec![],
             uniform_buffers: vec![],
             current_frame: 0,
         }
     }
 
-    pub fn setup(&mut self, window: &Window, scene: &Scene) {
+    pub fn setup(&mut self, window: &Window) {
         self.create_swapchain(window);
         self.create_uniform_buffers();
         self.create_depth_buffer(window);
-        self.create_pipelines(scene);
+        self.create_pipelines();
         self.create_framebuffers();
         self.create_command_buffers();
         self.create_sync_structures();
@@ -77,7 +83,7 @@ impl Renderer {
     pub fn recreate_swapchain(&mut self, window: &Window, scene: &Scene) {
         self.device.wait_idle();
         self.delete_swapchain();
-        self.setup(window, scene);
+        self.setup(window);
     }
 
     pub fn draw_frame(&mut self) {
@@ -140,12 +146,39 @@ impl Renderer {
         );
         // bind descriptors sets
         // bind vertex and index buffers
+        command_buffer.bind_vertex_buffer(&self.device, &self.vertex_buffers);
+        command_buffer.bind_index_buffer(&self.device, &self.index_buffers[0]);
         // draw
+        command_buffer.draw_indexed(&self.device);
         command_buffer.end_render_pass(&self.device);
     }
 
     pub fn shutdown(&self) {
         self.device.wait_idle();
+    }
+
+    pub fn upload_meshes(&mut self, scene: &Scene) {
+        let mut vertices = vec![];
+        let mut indices = vec![];
+        for model in scene.models() {
+            vertices.extend_from_slice(model.vertices());
+            indices.extend_from_slice(model.indices());
+        }
+
+        let vertex_buffer = Buffer::with_data(
+            self.device.clone(),
+            &vertices,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+        );
+
+        let index_buffer = Buffer::with_data(
+            self.device.clone(),
+            &indices,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+        );
+
+        self.vertex_buffers.push(vertex_buffer);
+        self.index_buffers.push(index_buffer);
     }
 
     fn create_swapchain(&mut self, window: &Window) {
@@ -183,7 +216,7 @@ impl Renderer {
         }
     }
 
-    fn create_pipelines(&mut self, scene: &Scene) {
+    fn create_pipelines(&mut self) {
         let swapchain = self.swapchain.as_ref().unwrap();
         let depth_buffer = self.depth_buffer.as_ref().unwrap();
         self.graphics_pipeline = Some(GraphicsPipeline::new(
@@ -191,8 +224,7 @@ impl Renderer {
             swapchain,
             depth_buffer,
             &self.uniform_buffers,
-            scene,
-            false,
+            true,
         ));
     }
 

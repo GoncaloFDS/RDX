@@ -57,7 +57,11 @@ impl Image {
     pub fn allocate_memory(&mut self) {
         let mem_reqs = self.get_memory_requirements();
 
-        let device_memory = DeviceMemory::new(self.device.clone(), mem_reqs);
+        let device_memory = DeviceMemory::new(
+            self.device.clone(),
+            mem_reqs,
+            gpu_alloc::UsageFlags::empty(),
+        );
         device_memory.bind_to_image(self.handle);
 
         self.device_memory = Some(device_memory);

@@ -36,7 +36,6 @@ impl GraphicsPipeline {
         swapchain: &Swapchain,
         depth_buffer: &DepthBuffer,
         uniform_buffers: &[UniformBuffer],
-        scene: &Scene,
         is_wireframe: bool,
     ) -> Self {
         let binding_descriptions = Vertex::binding_descriptions();
@@ -51,9 +50,9 @@ impl GraphicsPipeline {
         //
         let viewports = [vk::ViewportBuilder::new()
             .x(0.0)
-            .y(0.0)
+            .y(swapchain.extent().height as _)
             .width(swapchain.extent().width as _)
-            .height(swapchain.extent().height as _)
+            .height(-(swapchain.extent().height as f32))
             .min_depth(0.0)
             .max_depth(1.0)];
 

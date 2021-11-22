@@ -31,9 +31,10 @@ impl Engine {
 
         let mut renderer = Renderer::new(device.clone());
 
-        let scene = Scene::new(device.clone());
+        renderer.setup(&window);
 
-        renderer.setup(&window, &scene);
+        let scene = Scene::new();
+        renderer.upload_meshes(&scene);
 
         let engine = Engine {
             window,

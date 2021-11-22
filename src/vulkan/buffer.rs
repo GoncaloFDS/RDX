@@ -1,6 +1,7 @@
 use crate::vulkan::device::Device;
 use crate::vulkan::device_memory::DeviceMemory;
 use erupt::vk;
+use std::mem::size_of_val;
 use std::rc::Rc;
 
 pub struct Buffer {
@@ -28,11 +29,28 @@ impl Buffer {
         }
     }
 
-    pub fn allocate_memory(&mut self) {
+    pub fn with_data<T>(device: Rc<Device>, data: &[T], usage: vk::BufferUsageFlags) -> Self {
+        let size = size_of_val(data) as u64;
+
+        let mut buffer = Buffer::new(device, size, usage);
+        buffer.allocate_memory(gpu_alloc::UsageFlags::HOST_ACCESS);
+
+        let ptr = buffer.device_memory.as_mut().unwrap().map(0, size as _);
+
+        unsafe {
+            std::ptr::copy_nonoverlapping(data.as_ptr() as *const u8, ptr.as_ptr(), size as _);
+        }
+
+        buffer.device_memory.as_mut().unwrap().unmap();
+
+        buffer
+    }
+
+    pub fn allocate_memory(&mut self, allocation_flags: gpu_alloc::UsageFlags) {
         assert!(self.device_memory.is_none());
 
         let mem_reqs = self.get_memory_requirements();
-        let device_memory = DeviceMemory::new(self.device.clone(), mem_reqs);
+        let device_memory = DeviceMemory::new(self.device.clone(), mem_reqs, allocation_flags);
         device_memory.bind_to_buffer(self.handle);
 
         self.device_memory = Some(device_memory);
