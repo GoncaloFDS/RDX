@@ -10,10 +10,9 @@ use crate::vulkan::graphics_pipeline::GraphicsPipeline;
 use crate::vulkan::scene::Scene;
 use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
-use crate::vulkan::uniform_buffer::UniformBuffer;
-use crate::vulkan::vertex::Vertex;
+use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use erupt::vk;
-use std::mem::size_of;
+use glam::{vec3, Mat4, Vec3};
 use std::rc::Rc;
 use winit::window::Window;
 
@@ -87,6 +86,15 @@ impl Renderer {
     }
 
     pub fn draw_frame(&mut self) {
+        let extent = self.swapchain.as_ref().unwrap().extent();
+        let aspect_ratio = extent.width as f32 / extent.height as f32;
+        let ubo = UniformBufferObject {
+            view_model: Mat4::look_at_rh(vec3(0.0, 0.0, 1.0), Vec3::ZERO, Vec3::Y).into(),
+            projection: Mat4::perspective_rh(60.0f32.to_radians(), aspect_ratio, 0.01, 10000.0)
+                .into(),
+        };
+        self.uniform_buffers[self.current_frame].update_gpu_buffer(&ubo);
+
         let fence = &self.fences[self.current_frame];
         let render_semaphore = &self.render_semaphores[self.current_frame];
         let present_semaphore = &self.present_semaphores[self.current_frame];
@@ -145,6 +153,14 @@ impl Renderer {
             graphics_pipeline.handle(),
         );
         // bind descriptors sets
+        command_buffer.bind_descriptor_sets(
+            &self.device,
+            vk::PipelineBindPoint::GRAPHICS,
+            graphics_pipeline.pipeline_layout().handle(),
+            &[graphics_pipeline
+                .descriptor_set_manager()
+                .descriptor_set(image_index)],
+        );
         // bind vertex and index buffers
         command_buffer.bind_vertex_buffer(&self.device, &self.vertex_buffers);
         command_buffer.bind_index_buffer(&self.device, &self.index_buffers[0]);
@@ -224,7 +240,7 @@ impl Renderer {
             swapchain,
             depth_buffer,
             &self.uniform_buffers,
-            true,
+            false,
         ));
     }
 

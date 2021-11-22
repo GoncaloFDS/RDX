@@ -1,4 +1,5 @@
 use crate::vulkan::device::Device;
+use bytemuck::Pod;
 use erupt::vk;
 use gpu_alloc::MemoryBlock;
 use gpu_alloc_erupt::EruptMemoryDevice;
@@ -48,6 +49,18 @@ impl DeviceMemory {
     pub fn unmap(&mut self) {
         unsafe {
             self.mem_block.unmap(EruptMemoryDevice::wrap(&self.device));
+        }
+    }
+
+    pub fn write_data<T: Pod>(&mut self, data: &[T], offset: u64) {
+        unsafe {
+            self.mem_block
+                .write_bytes(
+                    EruptMemoryDevice::wrap(&self.device),
+                    offset,
+                    bytemuck::cast_slice(data),
+                )
+                .unwrap()
         }
     }
 }

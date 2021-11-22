@@ -1,6 +1,7 @@
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
 use erupt::vk;
+use erupt::vk::DescriptorSet;
 use log::debug;
 
 #[derive(Copy, Clone)]
@@ -108,6 +109,25 @@ impl CommandBuffer {
                 0,
                 vk::IndexType::UINT32,
             )
+        }
+    }
+
+    pub fn bind_descriptor_sets(
+        &self,
+        device: &Device,
+        pipeline_bind_point: vk::PipelineBindPoint,
+        pipeline_layout: vk::PipelineLayout,
+        descriptor_sets: &[DescriptorSet],
+    ) {
+        unsafe {
+            device.cmd_bind_descriptor_sets(
+                self.handle,
+                pipeline_bind_point,
+                pipeline_layout,
+                0,
+                descriptor_sets,
+                &[],
+            );
         }
     }
 

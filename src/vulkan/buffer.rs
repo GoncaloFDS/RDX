@@ -1,5 +1,6 @@
 use crate::vulkan::device::Device;
 use crate::vulkan::device_memory::DeviceMemory;
+use bytemuck::Pod;
 use erupt::vk;
 use std::mem::size_of_val;
 use std::rc::Rc;
@@ -58,6 +59,13 @@ impl Buffer {
 
     fn get_memory_requirements(&self) -> vk::MemoryRequirements {
         unsafe { self.device.get_buffer_memory_requirements(self.handle) }
+    }
+
+    pub fn write_data<T: Pod>(&mut self, data: &[T], offset: u64) {
+        self.device_memory
+            .as_mut()
+            .unwrap()
+            .write_data(data, offset);
     }
 }
 

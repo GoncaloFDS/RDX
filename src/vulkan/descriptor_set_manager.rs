@@ -18,6 +18,10 @@ impl DescriptorSetManager {
         &self.descriptor_set_layout
     }
 
+    pub fn descriptor_set(&self, index: usize) -> vk::DescriptorSet {
+        self.descriptor_sets[index]
+    }
+
     pub fn new(
         device: Rc<Device>,
         descriptor_bindings: &[DescriptorBinding],

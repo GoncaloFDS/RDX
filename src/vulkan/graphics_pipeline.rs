@@ -4,7 +4,6 @@ use crate::vulkan::descriptor_set_manager::DescriptorSetManager;
 use crate::vulkan::device::Device;
 use crate::vulkan::pipeline_layout::PipelineLayout;
 use crate::vulkan::render_pass::RenderPass;
-use crate::vulkan::scene::Scene;
 use crate::vulkan::shader_module::ShaderModule;
 use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::uniform_buffer::UniformBuffer;
@@ -19,7 +18,6 @@ pub struct GraphicsPipeline {
     descriptor_set_manager: DescriptorSetManager,
     pipeline_layout: PipelineLayout,
     render_pass: RenderPass,
-    is_wireframe: bool,
 }
 
 impl GraphicsPipeline {
@@ -27,8 +25,16 @@ impl GraphicsPipeline {
         self.handle
     }
 
+    pub fn pipeline_layout(&self) -> &PipelineLayout {
+        &self.pipeline_layout
+    }
+
     pub fn render_pass(&self) -> &RenderPass {
         &self.render_pass
+    }
+
+    pub fn descriptor_set_manager(&self) -> &DescriptorSetManager {
+        &self.descriptor_set_manager
     }
 
     pub fn new(
@@ -100,53 +106,53 @@ impl GraphicsPipeline {
                 0,
                 1,
                 vk::DescriptorType::UNIFORM_BUFFER,
-                vk::ShaderStageFlags::VERTEX,
-            ),
-            DescriptorBinding::new(
-                1,
-                1,
-                vk::DescriptorType::STORAGE_BUFFER,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             ),
-            DescriptorBinding::new(
-                2,
-                1,
-                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                vk::ShaderStageFlags::FRAGMENT,
-            ),
+            // DescriptorBinding::new(
+            //     1,
+            //     1,
+            //     vk::DescriptorType::STORAGE_BUFFER,
+            //     vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            // ),
+            // DescriptorBinding::new(
+            //     2,
+            //     1,
+            //     vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            //     vk::ShaderStageFlags::FRAGMENT,
+            // ),
         ];
 
         let descriptor_set_manager =
             DescriptorSetManager::new(device.clone(), &descriptor_bindings, uniform_buffers.len());
 
-        // for i in 0..swapchain.images().len() {
-        //     let uniform_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-        //         .buffer(uniform_buffers[i].buffer().handle())
-        //         .range(vk::WHOLE_SIZE)];
-        //
-        //     let material_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-        //         .buffer(scene.material_buffer().handle())
-        //         .range(vk::WHOLE_SIZE)];
-        //
-        //     let image_info = scene
-        //         .texture_sampler_handles()
-        //         .iter()
-        //         .map(|_| {
-        //             vk::DescriptorImageInfoBuilder::new()
-        //                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-        //                 .image_view(vk::ImageView::null())
-        //                 .sampler(vk::Sampler::null())
-        //         })
-        //         .collect::<Vec<_>>();
-        //
-        //     let descriptor_writes = [
-        //         descriptor_set_manager.bind_buffer(i as _, 0, &uniform_buffer_info),
-        //         descriptor_set_manager.bind_buffer(i as _, 1, &material_buffer_info),
-        //         descriptor_set_manager.bind_image(i as _, 2, &image_info),
-        //     ];
-        //
-        //     descriptor_set_manager.update_descriptors(&descriptor_writes);
-        // }
+        swapchain.images().iter().enumerate().for_each(|(i, _)| {
+            let uniform_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+                .buffer(uniform_buffers[i].buffer().handle())
+                .range(vk::WHOLE_SIZE)];
+
+            // let material_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+            //     .buffer(scene.material_buffer().handle())
+            //     .range(vk::WHOLE_SIZE)];
+            //
+            // let image_info = scene
+            //     .texture_sampler_handles()
+            //     .iter()
+            //     .map(|_| {
+            //         vk::DescriptorImageInfoBuilder::new()
+            //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            //             .image_view(vk::ImageView::null())
+            //             .sampler(vk::Sampler::null())
+            //     })
+            //     .collect::<Vec<_>>();
+
+            let descriptor_writes = [
+                descriptor_set_manager.bind_buffer(i as _, 0, &uniform_buffer_info),
+                // descriptor_set_manager.bind_buffer(i as _, 1, &material_buffer_info),
+                // descriptor_set_manager.bind_image(i as _, 2, &image_info),
+            ];
+
+            descriptor_set_manager.update_descriptors(&descriptor_writes);
+        });
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
@@ -198,7 +204,6 @@ impl GraphicsPipeline {
             descriptor_set_manager,
             pipeline_layout,
             render_pass,
-            is_wireframe,
         }
     }
 }

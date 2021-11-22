@@ -1,12 +1,14 @@
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
+use crevice::std430::{AsStd430, Std430};
 use erupt::vk;
 use std::mem::size_of;
 use std::rc::Rc;
 
+#[derive(AsStd430)]
 pub struct UniformBufferObject {
-    view_model: glam::Mat4,
-    projection: glam::Mat4,
+    pub view_model: mint::ColumnMatrix4<f32>,
+    pub projection: mint::ColumnMatrix4<f32>,
 }
 
 pub struct UniformBuffer {
@@ -19,18 +21,18 @@ impl UniformBuffer {
     }
 
     pub fn new(device: Rc<Device>) -> Self {
-        let buffer_size = size_of::<UniformBufferObject>();
+        let buffer_size = size_of::<Std430UniformBufferObject>();
         let mut buffer = Buffer::new(
             device,
             buffer_size as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
         );
-        buffer.allocate_memory(gpu_alloc::UsageFlags::empty());
+        buffer.allocate_memory(gpu_alloc::UsageFlags::HOST_ACCESS);
 
         UniformBuffer { buffer }
     }
 
-    pub fn update_gpu_buffer(ubo: &UniformBufferObject) {
-        log::debug!("update_gpu_buffer not implemented")
+    pub fn update_gpu_buffer(&mut self, ubo: &UniformBufferObject) {
+        self.buffer.write_data(ubo.as_std430().as_bytes(), 0);
     }
 }
