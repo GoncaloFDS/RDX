@@ -1,3 +1,4 @@
+use crate::camera::Camera;
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::command_pool::CommandPool;
@@ -12,7 +13,6 @@ use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use erupt::vk;
-use glam::{vec3, Mat4, Vec3};
 use std::rc::Rc;
 use winit::window::Window;
 
@@ -34,7 +34,9 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(device: Rc<Device>) -> Self {
+    pub fn new() -> Self {
+        let device = Rc::new(Device::new());
+
         let debug_messenger = DebugMessenger::new(device.clone());
 
         let command_pool = CommandPool::new(device.clone(), device.graphics_family_index(), true);
@@ -79,22 +81,23 @@ impl Renderer {
         self.render_semaphores.clear();
     }
 
-    pub fn recreate_swapchain(&mut self, window: &Window, scene: &Scene) {
+    pub fn recreate_swapchain(&mut self, window: &Window) {
         self.device.wait_idle();
         self.delete_swapchain();
         self.setup(window);
     }
 
-    pub fn draw_frame(&mut self) {
+    pub fn update(&mut self, camera: &Camera) {
         let extent = self.swapchain.as_ref().unwrap().extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
         let ubo = UniformBufferObject {
-            view_model: Mat4::look_at_rh(vec3(0.0, 0.0, 1.0), Vec3::ZERO, Vec3::Y).into(),
-            projection: Mat4::perspective_rh(60.0f32.to_radians(), aspect_ratio, 0.01, 10000.0)
-                .into(),
+            view_model: camera.view().into(),
+            projection: camera.projection(aspect_ratio).into(),
         };
         self.uniform_buffers[self.current_frame].update_gpu_buffer(&ubo);
+    }
 
+    pub fn draw_frame(&mut self) {
         let fence = &self.fences[self.current_frame];
         let render_semaphore = &self.render_semaphores[self.current_frame];
         let present_semaphore = &self.present_semaphores[self.current_frame];

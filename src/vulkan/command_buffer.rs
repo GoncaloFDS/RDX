@@ -2,7 +2,6 @@ use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
 use erupt::vk;
 use erupt::vk::DescriptorSet;
-use log::debug;
 
 #[derive(Copy, Clone)]
 pub struct CommandBuffer {

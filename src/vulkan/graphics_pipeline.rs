@@ -56,9 +56,9 @@ impl GraphicsPipeline {
         //
         let viewports = [vk::ViewportBuilder::new()
             .x(0.0)
-            .y(swapchain.extent().height as _)
+            .y(0.0)
             .width(swapchain.extent().width as _)
-            .height(-(swapchain.extent().height as f32))
+            .height(swapchain.extent().height as f32)
             .min_depth(0.0)
             .max_depth(1.0)];
 

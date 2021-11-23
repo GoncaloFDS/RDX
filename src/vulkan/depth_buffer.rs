@@ -6,7 +6,7 @@ use erupt::vk;
 use std::rc::Rc;
 
 pub struct DepthBuffer {
-    image: Image,
+    _image: Image,
     image_view: ImageView,
     format: vk::Format,
 }
@@ -39,7 +39,7 @@ impl DepthBuffer {
         );
 
         DepthBuffer {
-            image,
+            _image: image,
             image_view,
             format,
         }

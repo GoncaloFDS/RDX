@@ -1,4 +1,5 @@
-pub mod engine;
+pub mod renderer;
+pub mod scene;
 
 mod buffer;
 mod command_buffer;
@@ -19,8 +20,6 @@ mod instance;
 mod model;
 mod pipeline_layout;
 mod render_pass;
-mod renderer;
-mod scene;
 mod semaphore;
 mod shader_module;
 mod surface;

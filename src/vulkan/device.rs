@@ -33,14 +33,19 @@ impl Device {
         self.queue_family_indices.graphics
     }
 
-    pub fn new(enabled_extensions: &[*const i8], requested_queue_types: vk::QueueFlags) -> Self {
+    pub fn new() -> Self {
+        let enabled_extensions = [
+            vk::KHR_SWAPCHAIN_EXTENSION_NAME,
+            vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+            vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+            vk::KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+            vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+        ];
+
+        let requested_queue_types = vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE;
+
         let instance = Instance::new();
         let physical_device = pick_physical_device(instance.handle());
-
-        let properties = unsafe { instance.get_physical_device_properties(physical_device) };
-        let features = unsafe { instance.get_physical_device_features(physical_device) };
-        let memory_properties =
-            unsafe { instance.get_physical_device_memory_properties(physical_device) };
 
         let queue_family_properties =
             unsafe { instance.get_physical_device_queue_family_properties(physical_device, None) };

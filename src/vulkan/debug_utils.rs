@@ -1,6 +1,6 @@
 use crate::vulkan::device::Device;
 use erupt::{cstr, vk};
-use std::ffi::{c_void, CStr, CString};
+use std::ffi::{c_void, CStr};
 use std::os::raw::c_char;
 use std::rc::Rc;
 
@@ -86,21 +86,4 @@ unsafe extern "system" fn debug_callback(
     };
 
     vk::FALSE
-}
-
-pub struct DebugUtils {
-    device: Rc<Device>,
-}
-
-impl DebugUtils {
-    pub fn new(device: Rc<Device>) -> Self {
-        DebugUtils { device }
-    }
-
-    pub fn set_object_name(&self, object: vk::Queue, name: &str) {
-        let info = vk::DebugUtilsObjectNameInfoEXTBuilder::new()
-            .object_handle(object.object_handle())
-            .object_type(vk::ObjectType::QUEUE)
-            .object_name(&CString::new(name).unwrap());
-    }
 }

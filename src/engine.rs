@@ -1,35 +1,28 @@
-use crate::vulkan::device::Device;
+use crate::camera::Camera;
+use crate::input::Input;
+use crate::time::Time;
 use crate::vulkan::renderer::Renderer;
 use crate::vulkan::scene::Scene;
-use erupt::vk;
-use std::rc::Rc;
-use winit::dpi::LogicalSize;
+use glam::{vec3, Vec3};
+use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::event::{ElementState, KeyboardInput, MouseButton};
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
 pub struct Engine {
+    time: Time,
     window: Window,
-    device: Rc<Device>,
     renderer: Renderer,
     scene: Scene,
+    camera: Camera,
+    input: Input,
 }
 
 impl Engine {
     pub fn new(width: u32, height: u32, name: &str) -> (Engine, EventLoop<()>) {
         let (window, event_loop) = Self::new_window(width, height, name);
 
-        let device = Rc::new(Device::new(
-            &[
-                vk::KHR_SWAPCHAIN_EXTENSION_NAME,
-                vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-                vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-                vk::KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-                vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-            ],
-            vk::QueueFlags::GRAPHICS | vk::QueueFlags::COMPUTE,
-        ));
-
-        let mut renderer = Renderer::new(device.clone());
+        let mut renderer = Renderer::new();
 
         renderer.setup(&window);
 
@@ -37,10 +30,12 @@ impl Engine {
         renderer.upload_meshes(&scene);
 
         let engine = Engine {
+            time: Time::new(),
             window,
-            device,
             renderer,
             scene,
+            camera: Camera::new(vec3(0.0, 0.0, 1.0), Vec3::ZERO),
+            input: Default::default(),
         };
 
         (engine, event_loop)
@@ -61,11 +56,33 @@ impl Engine {
     }
 
     pub fn resize(&mut self) {
-        self.renderer.recreate_swapchain(&self.window, &self.scene);
+        self.renderer.recreate_swapchain(&self.window);
     }
 
     pub fn run(&mut self) {
+        self.camera.update_camera(self.time.delta_time());
+        self.renderer.update(&self.camera);
         self.renderer.draw_frame();
+        self.time.tick();
+    }
+
+    pub fn handle_key_input(&mut self, input: KeyboardInput) {
+        if input.virtual_keycode.is_some() {
+            self.camera.handle_input(input)
+        }
+    }
+
+    pub fn handle_mouse_move(&mut self, position: PhysicalPosition<f64>) {
+        self.input.update(position);
+        self.camera.handle_mouse_move(
+            self.input.delta_x(),
+            self.input.delta_y(),
+            self.time.delta_time(),
+        );
+    }
+
+    pub fn handle_mouse_input(&mut self, input: MouseButton, state: ElementState) {
+        self.camera.handle_mouse_input(input, state);
     }
 
     pub fn shutdown(&self) {

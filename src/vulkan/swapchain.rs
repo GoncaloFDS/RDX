@@ -15,13 +15,11 @@ pub struct SwapchainSupportDetails {
 pub struct Swapchain {
     device: Rc<Device>,
     handle: vk::SwapchainKHR,
-    surface: Surface,
+    _surface: Surface,
     format: vk::Format,
-    color_space: vk::ColorSpaceKHR,
     extent: vk::Extent2D,
     images: Vec<vk::Image>,
     image_views: Vec<ImageView>,
-    support_details: SwapchainSupportDetails,
 }
 
 impl Swapchain {
@@ -73,7 +71,6 @@ impl Swapchain {
         let swapchain = unsafe { device.create_swapchain_khr(&create_info, None).unwrap() };
 
         let format = surface_format.format;
-        let color_space = surface_format.color_space;
 
         let images = unsafe { device.get_swapchain_images_khr(swapchain, None).unwrap() };
         let image_views = images
@@ -86,13 +83,11 @@ impl Swapchain {
         Swapchain {
             device,
             handle: swapchain,
-            surface,
+            _surface: surface,
             format,
-            color_space,
             extent,
             images,
             image_views,
-            support_details,
         }
     }
 
