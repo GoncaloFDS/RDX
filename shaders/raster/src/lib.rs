@@ -15,17 +15,6 @@ pub struct UBO {
     pub projection: Mat4,
 }
 
-#[spirv(fragment)]
-pub fn main_fs(output: &mut Vec4, #[spirv(uniform, descriptor_set = 0, binding = 0)] ubo: &UBO) {
-    *output = vec4(0.2, 0.4, 0.2, 1.0);
-    // *output = vec4(
-    //     ubo.view_model.x_axis.x,
-    //     ubo.view_model.x_axis.y,
-    //     ubo.view_model.x_axis.z,
-    //     1.0,
-    // );
-}
-
 #[spirv(vertex)]
 pub fn main_vs(
     #[spirv(vertex_index)] vert_id: i32,
@@ -34,5 +23,9 @@ pub fn main_vs(
     position: Vec3,
 ) {
     *out_pos = ubo.projection * ubo.view_model * position.extend(1.0);
-    // *out_pos = position.extend(1.0);
+}
+
+#[spirv(fragment)]
+pub fn main_fs(output: &mut Vec4, #[spirv(uniform, descriptor_set = 0, binding = 0)] ubo: &UBO) {
+    *output = vec4(0.2, 0.4, 0.2, 1.0);
 }

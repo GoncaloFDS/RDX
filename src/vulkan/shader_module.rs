@@ -4,14 +4,21 @@ use std::ffi::CStr;
 use std::rc::Rc;
 use std::{env, ptr};
 
+const RASTER: &[u8] = include_bytes!(env!("raster.spv"));
+const UI: &[u8] = include_bytes!(env!("ui.spv"));
+
 pub struct ShaderModule {
     handle: vk::ShaderModule,
     device: Rc<Device>,
 }
 
 impl ShaderModule {
-    pub fn new(device: Rc<Device>) -> Self {
-        let shader: &[u8] = include_bytes!(env!("raster.spv"));
+    pub fn new(device: Rc<Device>, shader: &str) -> Self {
+        let shader = match shader {
+            "raster" => RASTER,
+            "ui" => UI,
+            _ => panic!(),
+        };
 
         let create_info = vk::ShaderModuleCreateInfo {
             s_type: vk::StructureType::SHADER_MODULE_CREATE_INFO,

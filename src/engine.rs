@@ -1,30 +1,37 @@
 use crate::camera::Camera;
 use crate::input::Input;
 use crate::time::Time;
+use crate::user_interface::UserInterface;
 use crate::vulkan::renderer::Renderer;
 use crate::vulkan::scene::Scene;
+use egui_winit::winit::event::Event;
+use egui_winit::winit::event_loop::ControlFlow;
 use glam::{vec3, Vec3};
+use std::rc::Rc;
 use winit::dpi::{LogicalSize, PhysicalPosition};
-use winit::event::{ElementState, KeyboardInput, MouseButton};
+use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
 pub struct Engine {
     time: Time,
-    window: Window,
+    window: Rc<Window>,
     renderer: Renderer,
     scene: Scene,
     camera: Camera,
     input: Input,
+    ui: UserInterface,
 }
 
 impl Engine {
     pub fn new(width: u32, height: u32, name: &str) -> (Engine, EventLoop<()>) {
         let (window, event_loop) = Self::new_window(width, height, name);
+        let window = Rc::new(window);
 
         let mut renderer = Renderer::new();
-
         renderer.setup(&window);
+
+        let ui = UserInterface::new(window.clone());
 
         let scene = Scene::new();
         renderer.upload_meshes(&scene);
@@ -36,6 +43,7 @@ impl Engine {
             scene,
             camera: Camera::new(vec3(0.0, 0.0, 1.0), Vec3::ZERO),
             input: Default::default(),
+            ui,
         };
 
         (engine, event_loop)
@@ -55,6 +63,52 @@ impl Engine {
         (window, event_loop)
     }
 
+    pub fn on_event(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
+        *control_flow = ControlFlow::Poll;
+        match event {
+            Event::WindowEvent {
+                event: window_event,
+                ..
+            } => {
+                let ui_captured_input = self.ui.on_event(&window_event);
+
+                if ui_captured_input {
+                    return;
+                }
+
+                match window_event {
+                    WindowEvent::Resized(size) => {
+                        log::info!("Resizing window: {}x{}", size.width, size.height);
+                        self.resize();
+                    }
+                    WindowEvent::CloseRequested => {
+                        log::debug!("Closing window");
+                        *control_flow = ControlFlow::Exit;
+                    }
+                    WindowEvent::KeyboardInput { input, .. } => {
+                        if input.virtual_keycode == Some(VirtualKeyCode::Escape) {
+                            self.shutdown();
+                            *control_flow = ControlFlow::Exit
+                        } else {
+                            self.handle_key_input(input)
+                        }
+                    }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        self.handle_mouse_move(position);
+                    }
+                    WindowEvent::MouseInput { button, state, .. } => {
+                        self.handle_mouse_input(button, state);
+                    }
+                    _ => {}
+                }
+            }
+            Event::MainEventsCleared => {
+                self.run();
+            }
+            _ => (),
+        }
+    }
+
     pub fn resize(&mut self) {
         self.renderer.recreate_swapchain(&self.window);
     }
@@ -62,7 +116,9 @@ impl Engine {
     pub fn run(&mut self) {
         self.camera.update_camera(self.time.delta_time());
         self.renderer.update(&self.camera);
-        self.renderer.draw_frame();
+        self.renderer.draw_frame(&mut self.ui);
+        // self.renderer.draw_ui(&mut self.ui);
+        self.renderer.present_frame();
         self.time.tick();
     }
 

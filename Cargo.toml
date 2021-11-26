@@ -24,3 +24,6 @@ mint = "0.5.8"
 memoffset = "0.6.4"
 bytemuck = "1.7.2"
 crevice = "0.8.0"
+
+egui = "0.15.0"
+egui-winit = "0.15.0"

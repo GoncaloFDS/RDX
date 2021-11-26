@@ -9,5 +9,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         .print_metadata(MetadataPrintout::Full)
         .build()?;
 
+    SpirvBuilder::new("./shaders/ui", "spirv-unknown-vulkan1.2")
+        .capability(Capability::RayTracingKHR)
+        .extension("SPV_KHR_ray_tracing")
+        .print_metadata(MetadataPrintout::Full)
+        .build()?;
+
     Ok(())
 }

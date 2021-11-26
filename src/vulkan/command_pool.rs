@@ -51,10 +51,6 @@ impl CommandPool {
         command_buffer
     }
 
-    pub fn end(&self, i: usize) {
-        self.command_buffers[i].end(&self.device);
-    }
-
     pub fn single_time_submit(&self, action: impl Fn(vk::CommandBuffer)) {
         let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
             .command_pool(self.command_pool)

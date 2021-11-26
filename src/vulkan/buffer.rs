@@ -2,7 +2,7 @@ use crate::vulkan::device::Device;
 use crate::vulkan::device_memory::DeviceMemory;
 use bytemuck::Pod;
 use erupt::vk;
-use std::mem::size_of_val;
+use std::mem::{size_of, size_of_val};
 use std::rc::Rc;
 
 pub struct Buffer {
@@ -65,7 +65,7 @@ impl Buffer {
         self.device_memory
             .as_mut()
             .unwrap()
-            .write_data(data, offset);
+            .write_data(data, offset * size_of::<T>() as u64);
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::camera::Camera;
+use crate::user_interface::UserInterface;
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::command_pool::CommandPool;
@@ -12,9 +13,21 @@ use crate::vulkan::scene::Scene;
 use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
+use crate::vulkan::vertex::EguiVertex;
+use egui::epaint;
 use erupt::vk;
+use glam::{vec2, vec4, Vec2};
+use std::mem::size_of;
 use std::rc::Rc;
 use winit::window::Window;
+
+const VERTICES_PER_QUAD: u64 = 4;
+const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
+const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
+
+pub struct PushConstants {
+    pub screen_size: Vec2,
+}
 
 pub struct Renderer {
     device: Rc<Device>,
@@ -31,6 +44,7 @@ pub struct Renderer {
     index_buffers: Vec<Buffer>,
     uniform_buffers: Vec<UniformBuffer>,
     current_frame: usize,
+    ui_pipeline: Option<GraphicsPipeline>,
 }
 
 impl Renderer {
@@ -56,6 +70,7 @@ impl Renderer {
             index_buffers: vec![],
             uniform_buffers: vec![],
             current_frame: 0,
+            ui_pipeline: None,
         }
     }
 
@@ -67,6 +82,7 @@ impl Renderer {
         self.create_framebuffers();
         self.create_command_buffers();
         self.create_sync_structures();
+        self.allocate_ui_buffers();
     }
 
     fn delete_swapchain(&mut self) {
@@ -97,7 +113,7 @@ impl Renderer {
         self.uniform_buffers[self.current_frame].update_gpu_buffer(&ubo);
     }
 
-    pub fn draw_frame(&mut self) {
+    pub fn draw_frame(&mut self, ui: &mut UserInterface) {
         let fence = &self.fences[self.current_frame];
         let render_semaphore = &self.render_semaphores[self.current_frame];
         let present_semaphore = &self.present_semaphores[self.current_frame];
@@ -118,8 +134,95 @@ impl Renderer {
 
         let command_buffer = self.command_pool.begin(self.current_frame as _);
         self.render(command_buffer, self.current_frame);
-        self.command_pool.end(self.current_frame as _);
 
+        {
+            ui.render();
+
+            let push_constants = [[
+                swapchain.extent().width as f32,
+                swapchain.extent().height as f32,
+            ]];
+
+            {
+                let ui_pipeline = self.ui_pipeline.as_ref().unwrap();
+                let swapchain = self.swapchain.as_ref().unwrap();
+
+                command_buffer.begin_render_pass(
+                    &self.device,
+                    ui_pipeline.render_pass().handle(),
+                    self.framebuffers[self.current_frame].handle(),
+                    swapchain.extent(),
+                );
+
+                command_buffer.bind_pipeline(
+                    &self.device,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    ui_pipeline.handle(),
+                );
+                command_buffer.push_constants(
+                    &self.device,
+                    ui_pipeline.pipeline_layout().handle(),
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    &push_constants,
+                );
+            }
+
+            let mut vertex_start = 0;
+            let mut index_start = 0;
+            for egui::ClippedMesh(rect, mesh) in ui.clipped_meshes() {
+                if mesh.vertices.is_empty() || mesh.indices.is_empty() {
+                    continue;
+                }
+                // user image...
+                // ...
+                //
+
+                let vertices_count = mesh.vertices.len() as u64;
+                let indices_count = mesh.indices.len() as u64;
+
+                {
+                    let vertices = mesh
+                        .vertices
+                        .iter()
+                        .map(|vertex| {
+                            EguiVertex::new(
+                                vec2(vertex.pos.x, vertex.pos.y),
+                                vec2(vertex.uv.x, vertex.uv.y),
+                                vec4(
+                                    vertex.color.r() as f32 / 255.0,
+                                    vertex.color.g() as f32 / 255.0,
+                                    vertex.color.b() as f32 / 255.0,
+                                    vertex.color.a() as f32 / 255.0,
+                                ),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    self.vertex_buffers[0].write_data(&vertices, vertex_start);
+                    let indices = &mesh.indices;
+                    self.index_buffers[0].write_data(&indices, index_start);
+                    // bind vertex and index buffers
+                    let buffers = [&self.vertex_buffers[0]];
+                    command_buffer.bind_vertex_buffer(
+                        &self.device,
+                        &buffers,
+                        &[vertex_start * size_of::<EguiVertex>() as u64],
+                    );
+                    command_buffer.bind_index_buffer(
+                        &self.device,
+                        &self.index_buffers[0],
+                        index_start * size_of::<u32>() as u64,
+                    );
+                    // draw
+                    command_buffer.draw_indexed(&self.device, indices.len() as _);
+                }
+                vertex_start += vertices_count;
+                index_start += indices_count;
+            }
+        }
+
+        command_buffer.end_render_pass(&self.device);
+        command_buffer.end(&self.device);
         fence.reset();
 
         self.device.submit(
@@ -129,7 +232,11 @@ impl Renderer {
             &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
             Some(fence.handle()),
         );
+    }
 
+    pub fn present_frame(&mut self) {
+        let present_semaphore = &self.present_semaphores[self.current_frame];
+        let swapchain = self.swapchain.as_ref().unwrap();
         self.device.present(
             &[present_semaphore.handle()],
             &[swapchain.handle()],
@@ -165,10 +272,11 @@ impl Renderer {
                 .descriptor_set(image_index)],
         );
         // bind vertex and index buffers
-        command_buffer.bind_vertex_buffer(&self.device, &self.vertex_buffers);
-        command_buffer.bind_index_buffer(&self.device, &self.index_buffers[0]);
+        let buffers = [&self.vertex_buffers[1]];
+        command_buffer.bind_vertex_buffer(&self.device, &buffers, &[0]);
+        command_buffer.bind_index_buffer(&self.device, &self.index_buffers[1], 0);
         // draw
-        command_buffer.draw_indexed(&self.device);
+        command_buffer.draw_indexed(&self.device, 3);
         command_buffer.end_render_pass(&self.device);
     }
 
@@ -195,6 +303,25 @@ impl Renderer {
             &indices,
             vk::BufferUsageFlags::INDEX_BUFFER,
         );
+
+        self.vertex_buffers.push(vertex_buffer);
+        self.index_buffers.push(index_buffer);
+    }
+
+    fn allocate_ui_buffers(&mut self) {
+        let mut vertex_buffer = Buffer::new(
+            self.device.clone(),
+            VERTEX_BUFFER_SIZE * size_of::<EguiVertex>() as u64,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+        );
+        vertex_buffer.allocate_memory(gpu_alloc::UsageFlags::HOST_ACCESS);
+
+        let mut index_buffer = Buffer::new(
+            self.device.clone(),
+            INDEX_BUFFER_SIZE * size_of::<u32>() as u64,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+        );
+        index_buffer.allocate_memory(gpu_alloc::UsageFlags::HOST_ACCESS);
 
         self.vertex_buffers.push(vertex_buffer);
         self.index_buffers.push(index_buffer);
@@ -244,6 +371,12 @@ impl Renderer {
             depth_buffer,
             &self.uniform_buffers,
             false,
+        ));
+
+        self.ui_pipeline = Some(GraphicsPipeline::new_ui(
+            self.device.clone(),
+            swapchain,
+            depth_buffer,
         ));
     }
 

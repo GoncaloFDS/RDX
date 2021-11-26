@@ -2,20 +2,26 @@ use crate::vulkan::depth_buffer::DepthBuffer;
 use crate::vulkan::descriptor_binding::DescriptorBinding;
 use crate::vulkan::descriptor_set_manager::DescriptorSetManager;
 use crate::vulkan::device::Device;
-use crate::vulkan::pipeline_layout::PipelineLayout;
+use crate::vulkan::pipeline_layout::{PipelineLayout, PushConstantRanges};
 use crate::vulkan::render_pass::RenderPass;
 use crate::vulkan::shader_module::ShaderModule;
 use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::uniform_buffer::UniformBuffer;
-use crate::vulkan::vertex::Vertex;
+use crate::vulkan::vertex::{EguiVertex, Vertex};
 use erupt::vk;
+use glam::Vec2;
 use std::ffi::CStr;
+use std::mem::size_of;
 use std::rc::Rc;
+
+struct PushConstant {
+    screen_size: Vec2,
+}
 
 pub struct GraphicsPipeline {
     handle: vk::Pipeline,
     device: Rc<Device>,
-    descriptor_set_manager: DescriptorSetManager,
+    descriptor_set_manager: Option<DescriptorSetManager>,
     pipeline_layout: PipelineLayout,
     render_pass: RenderPass,
 }
@@ -34,7 +40,7 @@ impl GraphicsPipeline {
     }
 
     pub fn descriptor_set_manager(&self) -> &DescriptorSetManager {
-        &self.descriptor_set_manager
+        self.descriptor_set_manager.as_ref().unwrap()
     }
 
     pub fn new(
@@ -95,10 +101,11 @@ impl GraphicsPipeline {
 
         let color_blend_attachments = [vk::PipelineColorBlendAttachmentStateBuilder::new()
             .color_write_mask(vk::ColorComponentFlags::all())
-            .blend_enable(false)];
+            .src_color_blend_factor(vk::BlendFactor::ONE)
+            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+            .blend_enable(true)];
 
         let color_blending = vk::PipelineColorBlendStateCreateInfoBuilder::new()
-            .logic_op_enable(false)
             .attachments(&color_blend_attachments);
 
         let descriptor_bindings = [
@@ -156,7 +163,8 @@ impl GraphicsPipeline {
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
-            descriptor_set_manager.descriptor_set_layout(),
+            &[descriptor_set_manager.descriptor_set_layout()],
+            &[],
         );
 
         let render_pass = RenderPass::new(
@@ -167,7 +175,7 @@ impl GraphicsPipeline {
             vk::AttachmentLoadOp::CLEAR,
         );
 
-        let shader_module = ShaderModule::new(device.clone());
+        let shader_module = ShaderModule::new(device.clone(), "raster");
         let shader_stages = [
             shader_module.create_shader_stage(
                 vk::ShaderStageFlagBits::VERTEX,
@@ -201,7 +209,124 @@ impl GraphicsPipeline {
         GraphicsPipeline {
             handle: graphics_pipeline,
             device,
-            descriptor_set_manager,
+            descriptor_set_manager: Some(descriptor_set_manager),
+            pipeline_layout,
+            render_pass,
+        }
+    }
+
+    pub fn new_ui(device: Rc<Device>, swapchain: &Swapchain, depth_buffer: &DepthBuffer) -> Self {
+        let binding_descriptions = EguiVertex::binding_descriptions();
+        let attribute_descriptions = EguiVertex::attribute_descriptions();
+        let vertex_input_info = vk::PipelineVertexInputStateCreateInfoBuilder::new()
+            .vertex_binding_descriptions(&binding_descriptions)
+            .vertex_attribute_descriptions(&attribute_descriptions);
+
+        let input_assembly = vk::PipelineInputAssemblyStateCreateInfoBuilder::new()
+            .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+            .primitive_restart_enable(false);
+        //
+        let viewports = [vk::ViewportBuilder::new()
+            .x(0.0)
+            .y(0.0)
+            .width(swapchain.extent().width as _)
+            .height(swapchain.extent().height as f32)
+            .min_depth(0.0)
+            .max_depth(1.0)];
+
+        let scissors = [vk::Rect2DBuilder::new()
+            .offset(vk::Offset2D { x: 0, y: 0 })
+            .extent(swapchain.extent())];
+
+        let viewport_state = vk::PipelineViewportStateCreateInfoBuilder::new()
+            .viewports(&viewports)
+            .scissors(&scissors);
+
+        let rasterization_state = vk::PipelineRasterizationStateCreateInfoBuilder::new()
+            .depth_clamp_enable(false)
+            .rasterizer_discard_enable(false)
+            .polygon_mode(vk::PolygonMode::FILL)
+            .line_width(1.0)
+            .cull_mode(vk::CullModeFlags::NONE)
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
+            .depth_bias_enable(false);
+
+        let multisampling = vk::PipelineMultisampleStateCreateInfoBuilder::new()
+            .sample_shading_enable(false)
+            .rasterization_samples(vk::SampleCountFlagBits::_1);
+
+        let stencil_op = vk::StencilOpStateBuilder::new()
+            .fail_op(vk::StencilOp::KEEP)
+            .pass_op(vk::StencilOp::KEEP)
+            .compare_op(vk::CompareOp::ALWAYS)
+            .build();
+        let depth_stencil = vk::PipelineDepthStencilStateCreateInfoBuilder::new()
+            .depth_test_enable(true)
+            .depth_write_enable(true)
+            .depth_compare_op(vk::CompareOp::ALWAYS)
+            .depth_bounds_test_enable(false)
+            .front(stencil_op)
+            .back(stencil_op);
+
+        let color_blend_attachments = [vk::PipelineColorBlendAttachmentStateBuilder::new()
+            .color_write_mask(vk::ColorComponentFlags::all())
+            .src_color_blend_factor(vk::BlendFactor::ONE)
+            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+            .blend_enable(true)];
+
+        let color_blending = vk::PipelineColorBlendStateCreateInfoBuilder::new()
+            .attachments(&color_blend_attachments);
+
+        let push_constant_ranges = PushConstantRanges::new(
+            vk::ShaderStageFlags::VERTEX,
+            0,
+            size_of::<PushConstant>() as _,
+        );
+        let pipeline_layout = PipelineLayout::new(device.clone(), &[], &[push_constant_ranges]);
+
+        let render_pass = RenderPass::new(
+            device.clone(),
+            swapchain,
+            depth_buffer,
+            vk::AttachmentLoadOp::LOAD,
+            vk::AttachmentLoadOp::DONT_CARE,
+        );
+
+        let shader_module = ShaderModule::new(device.clone(), "ui");
+        let shader_stages = [
+            shader_module.create_shader_stage(
+                vk::ShaderStageFlagBits::VERTEX,
+                CStr::from_bytes_with_nul(b"main_vs\0").unwrap(),
+            ),
+            shader_module.create_shader_stage(
+                vk::ShaderStageFlagBits::FRAGMENT,
+                CStr::from_bytes_with_nul(b"main_fs\0").unwrap(),
+            ),
+        ];
+
+        let pipeline_info = [vk::GraphicsPipelineCreateInfoBuilder::new()
+            .stages(&shader_stages)
+            .vertex_input_state(&vertex_input_info)
+            .input_assembly_state(&input_assembly)
+            .viewport_state(&viewport_state)
+            .rasterization_state(&rasterization_state)
+            .multisample_state(&multisampling)
+            .depth_stencil_state(&depth_stencil)
+            .color_blend_state(&color_blending)
+            .layout(pipeline_layout.handle())
+            .render_pass(render_pass.handle())
+            .subpass(0)];
+
+        let graphics_pipeline = unsafe {
+            device
+                .create_graphics_pipelines(None, &pipeline_info, None)
+                .unwrap()[0]
+        };
+
+        GraphicsPipeline {
+            handle: graphics_pipeline,
+            device,
+            descriptor_set_manager: None,
             pipeline_layout,
             render_pass,
         }
