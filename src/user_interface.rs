@@ -8,6 +8,7 @@ enum EguiTheme {
     Dark,
     Light,
 }
+
 pub struct Settings {
     theme: EguiTheme,
     rotation: f32,

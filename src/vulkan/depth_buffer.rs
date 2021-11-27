@@ -20,6 +20,16 @@ impl DepthBuffer {
         self.format
     }
 
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        let _image = Image::uninitialized(device.clone());
+        let image_view = ImageView::uninitialized(device);
+        DepthBuffer {
+            _image,
+            image_view,
+            format: Default::default(),
+        }
+    }
+
     pub fn new(device: Rc<Device>, command_buffers: &CommandPool, extent: vk::Extent2D) -> Self {
         let format = find_depth_format(&device);
         let mut image = Image::new(

@@ -1,11 +1,8 @@
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
-use crate::vulkan::renderer::PushConstants;
 use bytemuck::{cast_slice, Pod};
 use erupt::vk;
 use erupt::vk::DescriptorSet;
-use std::mem::size_of;
-use std::rc::Rc;
 
 #[derive(Copy, Clone)]
 pub struct CommandBuffer {

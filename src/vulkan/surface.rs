@@ -14,6 +14,13 @@ impl Surface {
         self.handle
     }
 
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        Surface {
+            handle: Default::default(),
+            device,
+        }
+    }
+
     pub fn new(device: Rc<Device>, window: &Window) -> Self {
         let surface = unsafe { surface::create_surface(device.instance(), window, None).unwrap() };
 
@@ -22,10 +29,8 @@ impl Surface {
             device,
         }
     }
-}
 
-impl Drop for Surface {
-    fn drop(&mut self) {
+    pub fn cleanup(&mut self) {
         if !self.handle.is_null() {
             unsafe {
                 self.device

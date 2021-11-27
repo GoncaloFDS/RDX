@@ -15,6 +15,13 @@ impl RenderPass {
         self.handle
     }
 
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        RenderPass {
+            handle: Default::default(),
+            device,
+        }
+    }
+
     pub fn new(
         device: Rc<Device>,
         swapchain: &Swapchain,
@@ -87,20 +94,10 @@ impl RenderPass {
             device,
         }
     }
-}
 
-impl Drop for RenderPass {
-    fn drop(&mut self) {
+    pub fn cleanup(&mut self) {
         unsafe {
             self.device.destroy_render_pass(Some(self.handle), None);
         }
-    }
-}
-
-impl Deref for RenderPass {
-    type Target = vk::RenderPass;
-
-    fn deref(&self) -> &Self::Target {
-        &self.handle
     }
 }

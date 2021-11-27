@@ -43,6 +43,20 @@ impl Swapchain {
         &self.image_views
     }
 
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        let surface = Surface::uninitialized(device.clone());
+
+        Swapchain {
+            device,
+            handle: Default::default(),
+            _surface: surface,
+            format: Default::default(),
+            extent: Default::default(),
+            images: vec![],
+            image_views: vec![],
+        }
+    }
+
     pub fn new(device: Rc<Device>, window: &Window, present_mode: vk::PresentModeKHR) -> Self {
         let surface = Surface::new(device.clone(), window);
 
@@ -198,12 +212,11 @@ impl Swapchain {
     fn choose_image_count(_capabilities: &vk::SurfaceCapabilitiesKHR) -> u32 {
         3
     }
-}
 
-impl Drop for Swapchain {
-    fn drop(&mut self) {
+    pub fn cleanup(&mut self) {
         unsafe {
             self.device.destroy_swapchain_khr(Some(self.handle), None);
         }
+        self._surface.cleanup();
     }
 }

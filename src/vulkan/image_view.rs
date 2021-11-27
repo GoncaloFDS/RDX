@@ -12,6 +12,13 @@ impl ImageView {
         self.handle
     }
 
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        ImageView {
+            handle: Default::default(),
+            device,
+        }
+    }
+
     pub fn new(
         device: Rc<Device>,
         image: vk::Image,

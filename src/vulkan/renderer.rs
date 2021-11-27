@@ -9,6 +9,7 @@ use crate::vulkan::device::Device;
 use crate::vulkan::fence::Fence;
 use crate::vulkan::framebuffer::Framebuffer;
 use crate::vulkan::graphics_pipeline::GraphicsPipeline;
+use crate::vulkan::render_pass::RenderPass;
 use crate::vulkan::scene::{Scene, Texture, TextureImage};
 use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
@@ -35,9 +36,11 @@ pub struct Renderer {
     device: Rc<Device>,
     _debug_messenger: DebugMessenger,
     command_pool: CommandPool,
-    swapchain: Option<Swapchain>,
-    depth_buffer: Option<DepthBuffer>,
-    graphics_pipeline: Option<GraphicsPipeline>,
+    swapchain: Swapchain,
+    depth_buffer: DepthBuffer,
+    render_pass: RenderPass,
+    graphics_pipeline: GraphicsPipeline,
+    ui_pipeline: GraphicsPipeline,
     framebuffers: Vec<Framebuffer>,
     present_semaphores: Vec<Semaphore>,
     render_semaphores: Vec<Semaphore>,
@@ -46,7 +49,6 @@ pub struct Renderer {
     index_buffers: Vec<Buffer>,
     uniform_buffers: Vec<UniformBuffer>,
     current_frame: usize,
-    ui_pipeline: Option<GraphicsPipeline>,
     textures: HashMap<u32, Texture>,
     texture_images: HashMap<u32, TextureImage>,
     egui_texture_version: u64,
@@ -60,13 +62,21 @@ impl Renderer {
 
         let command_pool = CommandPool::new(device.clone(), device.graphics_family_index(), true);
 
+        let swapchain = Swapchain::uninitialized(device.clone());
+        let depth_buffer = DepthBuffer::uninitialized(device.clone());
+        let render_pass = RenderPass::uninitialized(device.clone());
+        let graphics_pipeline = GraphicsPipeline::uninitialized(device.clone());
+        let ui_pipeline = GraphicsPipeline::uninitialized(device.clone());
+
         Renderer {
             device,
             _debug_messenger: debug_messenger,
             command_pool,
-            swapchain: None,
-            depth_buffer: None,
-            graphics_pipeline: None,
+            swapchain,
+            depth_buffer,
+            render_pass,
+            graphics_pipeline,
+            ui_pipeline,
             framebuffers: vec![],
             present_semaphores: vec![],
             render_semaphores: vec![],
@@ -75,7 +85,6 @@ impl Renderer {
             index_buffers: vec![],
             uniform_buffers: vec![],
             current_frame: 0,
-            ui_pipeline: None,
             textures: Default::default(),
             texture_images: Default::default(),
             egui_texture_version: 0,
@@ -84,8 +93,9 @@ impl Renderer {
 
     pub fn setup(&mut self, window: &Window) {
         self.create_swapchain(window);
-        self.create_uniform_buffers();
         self.create_depth_buffer(window);
+        self.create_default_render_pass();
+        self.create_uniform_buffers();
         self.create_pipelines();
         self.create_framebuffers();
         self.create_command_buffers();
@@ -95,14 +105,17 @@ impl Renderer {
 
     fn delete_swapchain(&mut self) {
         self.command_pool.reset();
-        self.swapchain = None;
-        self.graphics_pipeline = None;
-        self.depth_buffer = None;
+        self.swapchain.cleanup();
+        self.ui_pipeline.cleanup();
+        self.graphics_pipeline.cleanup();
+        self.render_pass.cleanup();
         self.uniform_buffers.clear();
         self.framebuffers.clear();
-        self.fences.clear();
         self.present_semaphores.clear();
         self.render_semaphores.clear();
+        self.fences.clear();
+        self.egui_texture_version = 0;
+        self.current_frame = 0;
     }
 
     pub fn recreate_swapchain(&mut self, window: &Window) {
@@ -112,7 +125,7 @@ impl Renderer {
     }
 
     pub fn update(&mut self, camera: &Camera) {
-        let extent = self.swapchain.as_ref().unwrap().extent();
+        let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
         let ubo = UniformBufferObject {
             view_model: camera.view().into(),
@@ -129,10 +142,9 @@ impl Renderer {
         let timeout = u64::MAX;
         fence.wait(timeout);
 
-        let swapchain = self.swapchain.as_ref().unwrap();
-
-        if let Some(current_frame) =
-            swapchain.acquire_next_image(timeout, Some(render_semaphore.handle()))
+        if let Some(current_frame) = self
+            .swapchain
+            .acquire_next_image(timeout, Some(render_semaphore.handle()))
         {
             self.current_frame = current_frame;
         } else {
@@ -164,12 +176,9 @@ impl Renderer {
                     self.texture_images.insert(FONT_IMAGE_ID, font_image);
                     //
                     {
-                        let descriptor_set_manager =
-                            self.ui_pipeline.as_ref().unwrap().descriptor_set_manager();
+                        let descriptor_set_manager = self.ui_pipeline.descriptor_set_manager();
                         if let Some(font_image) = self.texture_images.get(&FONT_IMAGE_ID) {
                             self.swapchain
-                                .as_ref()
-                                .unwrap()
                                 .images()
                                 .iter()
                                 .enumerate()
@@ -190,38 +199,29 @@ impl Renderer {
             }
 
             let push_constants = [[
-                swapchain.extent().width as f32,
-                swapchain.extent().height as f32,
+                self.swapchain.extent().width as f32,
+                self.swapchain.extent().height as f32,
             ]];
 
             {
-                let ui_pipeline = self.ui_pipeline.as_ref().unwrap();
-                let swapchain = self.swapchain.as_ref().unwrap();
-
-                command_buffer.begin_render_pass(
-                    &self.device,
-                    ui_pipeline.render_pass().handle(),
-                    self.framebuffers[self.current_frame].handle(),
-                    swapchain.extent(),
-                );
-
                 command_buffer.bind_pipeline(
                     &self.device,
                     vk::PipelineBindPoint::GRAPHICS,
-                    ui_pipeline.handle(),
+                    self.ui_pipeline.handle(),
                 );
                 // bind descriptors sets
                 command_buffer.bind_descriptor_sets(
                     &self.device,
                     vk::PipelineBindPoint::GRAPHICS,
-                    ui_pipeline.pipeline_layout().handle(),
-                    &[ui_pipeline
+                    self.ui_pipeline.pipeline_layout().handle(),
+                    &[self
+                        .ui_pipeline
                         .descriptor_set_manager()
                         .descriptor_set(self.current_frame)],
                 );
                 command_buffer.push_constants(
                     &self.device,
-                    ui_pipeline.pipeline_layout().handle(),
+                    self.ui_pipeline.pipeline_layout().handle(),
                     vk::ShaderStageFlags::VERTEX,
                     0,
                     &push_constants,
@@ -296,7 +296,7 @@ impl Renderer {
 
     pub fn present_frame(&mut self) {
         let present_semaphore = &self.present_semaphores[self.current_frame];
-        let swapchain = self.swapchain.as_ref().unwrap();
+        let swapchain = &self.swapchain;
         self.device.present(
             &[present_semaphore.handle()],
             &[swapchain.handle()],
@@ -307,27 +307,25 @@ impl Renderer {
     }
 
     fn render(&self, command_buffer: CommandBuffer, image_index: usize) {
-        let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap();
-        let swapchain = self.swapchain.as_ref().unwrap();
-
         command_buffer.begin_render_pass(
             &self.device,
-            graphics_pipeline.render_pass().handle(),
+            self.render_pass.handle(),
             self.framebuffers[image_index].handle(),
-            swapchain.extent(),
+            self.swapchain.extent(),
         );
 
         command_buffer.bind_pipeline(
             &self.device,
             vk::PipelineBindPoint::GRAPHICS,
-            graphics_pipeline.handle(),
+            self.graphics_pipeline.handle(),
         );
         // bind descriptors sets
         command_buffer.bind_descriptor_sets(
             &self.device,
             vk::PipelineBindPoint::GRAPHICS,
-            graphics_pipeline.pipeline_layout().handle(),
-            &[graphics_pipeline
+            self.graphics_pipeline.pipeline_layout().handle(),
+            &[self
+                .graphics_pipeline
                 .descriptor_set_manager()
                 .descriptor_set(image_index)],
         );
@@ -337,7 +335,6 @@ impl Renderer {
         command_buffer.bind_index_buffer(&self.device, &self.index_buffers[1], 0);
         // draw
         command_buffer.draw_indexed(&self.device, 3);
-        command_buffer.end_render_pass(&self.device);
     }
 
     pub fn shutdown(&self) {
@@ -368,6 +365,16 @@ impl Renderer {
         self.index_buffers.push(index_buffer);
     }
 
+    fn create_default_render_pass(&mut self) {
+        self.render_pass = RenderPass::new(
+            self.device.clone(),
+            &self.swapchain,
+            &self.depth_buffer,
+            vk::AttachmentLoadOp::CLEAR,
+            vk::AttachmentLoadOp::CLEAR,
+        );
+    }
+
     fn allocate_ui_buffers(&mut self) {
         let mut vertex_buffer = Buffer::new(
             self.device.clone(),
@@ -388,11 +395,8 @@ impl Renderer {
     }
 
     fn create_swapchain(&mut self, window: &Window) {
-        self.swapchain = Some(Swapchain::new(
-            self.device.clone(),
-            window,
-            vk::PresentModeKHR::MAILBOX_KHR,
-        ));
+        self.swapchain =
+            Swapchain::new(self.device.clone(), window, vk::PresentModeKHR::MAILBOX_KHR);
     }
 
     fn create_depth_buffer(&mut self, window: &Window) {
@@ -400,53 +404,41 @@ impl Renderer {
             width: window.inner_size().width,
             height: window.inner_size().height,
         };
-        self.depth_buffer = Some(DepthBuffer::new(
-            self.device.clone(),
-            &self.command_pool,
-            extent,
-        ));
+        self.depth_buffer = DepthBuffer::new(self.device.clone(), &self.command_pool, extent);
     }
 
     fn create_framebuffers(&mut self) {
-        let graphics_pipeline = self.graphics_pipeline.as_ref().unwrap();
-        let swapchain = self.swapchain.as_ref().unwrap();
-        let depth_buffer = self.depth_buffer.as_ref().unwrap();
-        for swapchain_image_view in swapchain.image_views() {
+        for swapchain_image_view in self.swapchain.image_views() {
             self.framebuffers.push(Framebuffer::new(
                 self.device.clone(),
                 swapchain_image_view,
-                graphics_pipeline.render_pass(),
-                swapchain,
-                depth_buffer,
+                &self.render_pass,
+                &self.swapchain,
+                &self.depth_buffer,
             ));
         }
     }
 
     fn create_pipelines(&mut self) {
-        let swapchain = self.swapchain.as_ref().unwrap();
-        let depth_buffer = self.depth_buffer.as_ref().unwrap();
-        self.graphics_pipeline = Some(GraphicsPipeline::new(
+        self.graphics_pipeline = GraphicsPipeline::new(
             self.device.clone(),
-            swapchain,
-            depth_buffer,
+            &self.swapchain,
+            &self.render_pass,
             &self.uniform_buffers,
             false,
-        ));
+        );
 
-        self.ui_pipeline = Some(GraphicsPipeline::new_ui(
-            self.device.clone(),
-            swapchain,
-            depth_buffer,
-        ));
+        self.ui_pipeline =
+            GraphicsPipeline::new_ui(self.device.clone(), &self.swapchain, &self.render_pass);
     }
 
     fn create_command_buffers(&mut self) {
-        let count = self.swapchain.as_ref().unwrap().images().len();
+        let count = self.swapchain.images().len();
         self.command_pool.allocate(count as _);
     }
 
     fn create_sync_structures(&mut self) {
-        let count = self.swapchain.as_ref().unwrap().images().len();
+        let count = self.swapchain.images().len();
 
         self.present_semaphores
             .resize_with(count, || Semaphore::new(self.device.clone()));
@@ -457,10 +449,20 @@ impl Renderer {
     }
 
     fn create_uniform_buffers(&mut self) {
-        let count = self.swapchain.as_ref().unwrap().images().len();
+        let count = self.swapchain.images().len();
         self.uniform_buffers
             .resize_with(count, || UniformBuffer::new(self.device.clone()));
     }
 
     pub fn upload_font_texture(&mut self, egui: &egui::CtxRef) {}
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        self.device.wait_idle();
+        self.swapchain.cleanup();
+        self.graphics_pipeline.cleanup();
+        self.ui_pipeline.cleanup();
+        self.render_pass.cleanup();
+    }
 }

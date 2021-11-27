@@ -23,7 +23,6 @@ pub struct GraphicsPipeline {
     device: Rc<Device>,
     descriptor_set_manager: Option<DescriptorSetManager>,
     pipeline_layout: PipelineLayout,
-    render_pass: RenderPass,
 }
 
 impl GraphicsPipeline {
@@ -35,18 +34,24 @@ impl GraphicsPipeline {
         &self.pipeline_layout
     }
 
-    pub fn render_pass(&self) -> &RenderPass {
-        &self.render_pass
-    }
-
     pub fn descriptor_set_manager(&self) -> &DescriptorSetManager {
         self.descriptor_set_manager.as_ref().unwrap()
+    }
+
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        let pipeline_layout = PipelineLayout::uninitialized(device.clone());
+        GraphicsPipeline {
+            handle: Default::default(),
+            device,
+            descriptor_set_manager: None,
+            pipeline_layout,
+        }
     }
 
     pub fn new(
         device: Rc<Device>,
         swapchain: &Swapchain,
-        depth_buffer: &DepthBuffer,
+        render_pass: &RenderPass,
         uniform_buffers: &[UniformBuffer],
         is_wireframe: bool,
     ) -> Self {
@@ -167,14 +172,6 @@ impl GraphicsPipeline {
             &[],
         );
 
-        let render_pass = RenderPass::new(
-            device.clone(),
-            swapchain,
-            depth_buffer,
-            vk::AttachmentLoadOp::CLEAR,
-            vk::AttachmentLoadOp::CLEAR,
-        );
-
         let shader_module = ShaderModule::new(device.clone(), "raster");
         let shader_stages = [
             shader_module.create_shader_stage(
@@ -211,11 +208,10 @@ impl GraphicsPipeline {
             device,
             descriptor_set_manager: Some(descriptor_set_manager),
             pipeline_layout,
-            render_pass,
         }
     }
 
-    pub fn new_ui(device: Rc<Device>, swapchain: &Swapchain, depth_buffer: &DepthBuffer) -> Self {
+    pub fn new_ui(device: Rc<Device>, swapchain: &Swapchain, render_pass: &RenderPass) -> Self {
         let binding_descriptions = EguiVertex::binding_descriptions();
         let attribute_descriptions = EguiVertex::attribute_descriptions();
         let vertex_input_info = vk::PipelineVertexInputStateCreateInfoBuilder::new()
@@ -310,14 +306,6 @@ impl GraphicsPipeline {
             &[push_constant_ranges],
         );
 
-        let render_pass = RenderPass::new(
-            device.clone(),
-            swapchain,
-            depth_buffer,
-            vk::AttachmentLoadOp::LOAD,
-            vk::AttachmentLoadOp::DONT_CARE,
-        );
-
         let shader_module = ShaderModule::new(device.clone(), "ui");
         let shader_stages = [
             shader_module.create_shader_stage(
@@ -354,13 +342,10 @@ impl GraphicsPipeline {
             device,
             descriptor_set_manager: Some(descriptor_set_manager),
             pipeline_layout,
-            render_pass,
         }
     }
-}
 
-impl Drop for GraphicsPipeline {
-    fn drop(&mut self) {
+    pub fn cleanup(&mut self) {
         unsafe {
             self.device.destroy_pipeline(Some(self.handle), None);
         }

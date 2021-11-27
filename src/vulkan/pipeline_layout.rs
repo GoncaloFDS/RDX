@@ -33,6 +33,13 @@ impl PipelineLayout {
         self.handle
     }
 
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        PipelineLayout {
+            handle: Default::default(),
+            device,
+        }
+    }
+
     pub fn new(
         device: Rc<Device>,
         descriptor_set_layouts: &[&DescriptorSetLayout],

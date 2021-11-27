@@ -25,7 +25,7 @@ impl Framebuffer {
     ) -> Self {
         let attachments = [image_view.handle(), depth_buffer.image_view().handle()];
         let create_info = vk::FramebufferCreateInfoBuilder::new()
-            .render_pass(**render_pass)
+            .render_pass(render_pass.handle())
             .attachments(&attachments)
             .width(swapchain.extent().width)
             .height(swapchain.extent().height)

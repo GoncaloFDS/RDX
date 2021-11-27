@@ -29,6 +29,17 @@ impl Image {
         self.format
     }
 
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        Image {
+            handle: Default::default(),
+            device_memory: None,
+            device,
+            extent: Default::default(),
+            format: Default::default(),
+            image_layout: Default::default(),
+        }
+    }
+
     pub fn new(
         device: Rc<Device>,
         extent: vk::Extent2D,
