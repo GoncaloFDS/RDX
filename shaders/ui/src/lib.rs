@@ -9,7 +9,7 @@
 use spirv_std::macros::spirv;
 
 use spirv_std::glam::{uvec2, vec2, vec3, vec4, Mat4, UVec3, Vec2, Vec3, Vec4};
-use spirv_std::image::Image;
+use spirv_std::image::{Image, SampledImage};
 use spirv_std::Sampler;
 
 pub struct PushConstants {
@@ -39,12 +39,10 @@ pub fn main_vs(
 #[spirv(fragment)]
 pub fn main_fs(
     output: &mut Vec4,
-    // #[spirv(descriptor_set = 0, binding = 0)] texture: &Image!(2D, type=f32, sampled),
-    // #[spirv(descriptor_set = 0, binding = 1)] sampler: &Sampler,
+    #[spirv(descriptor_set = 0, binding = 0)] texture: &SampledImage<Image!(2D, type=f32, sampled)>,
     v_tex_coords: Vec2,
     v_color: Vec4,
 ) {
-    // let font: Vec4 = texture.sample(*sampler, v_tex_coords);
-    // *output = v_color * font;
-    *output = v_color;
+    let font: Vec4 = unsafe { texture.sample(v_tex_coords) };
+    *output = v_color * font;
 }

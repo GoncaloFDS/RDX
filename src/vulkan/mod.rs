@@ -20,6 +20,7 @@ mod instance;
 mod model;
 mod pipeline_layout;
 mod render_pass;
+mod sampler;
 mod semaphore;
 mod shader_module;
 mod surface;

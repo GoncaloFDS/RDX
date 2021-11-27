@@ -9,14 +9,14 @@ use crate::vulkan::device::Device;
 use crate::vulkan::fence::Fence;
 use crate::vulkan::framebuffer::Framebuffer;
 use crate::vulkan::graphics_pipeline::GraphicsPipeline;
-use crate::vulkan::scene::Scene;
+use crate::vulkan::scene::{Scene, Texture, TextureImage};
 use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::EguiVertex;
-use egui::epaint;
 use erupt::vk;
 use glam::{vec2, vec4, Vec2};
+use std::collections::HashMap;
 use std::mem::size_of;
 use std::rc::Rc;
 use winit::window::Window;
@@ -24,6 +24,8 @@ use winit::window::Window;
 const VERTICES_PER_QUAD: u64 = 4;
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
+
+const FONT_IMAGE_ID: u32 = 10;
 
 pub struct PushConstants {
     pub screen_size: Vec2,
@@ -45,6 +47,9 @@ pub struct Renderer {
     uniform_buffers: Vec<UniformBuffer>,
     current_frame: usize,
     ui_pipeline: Option<GraphicsPipeline>,
+    textures: HashMap<u32, Texture>,
+    texture_images: HashMap<u32, TextureImage>,
+    egui_texture_version: u64,
 }
 
 impl Renderer {
@@ -71,6 +76,9 @@ impl Renderer {
             uniform_buffers: vec![],
             current_frame: 0,
             ui_pipeline: None,
+            textures: Default::default(),
+            texture_images: Default::default(),
+            egui_texture_version: 0,
         }
     }
 
@@ -137,6 +145,49 @@ impl Renderer {
 
         {
             ui.render();
+            {
+                let texture = ui.egui().texture();
+                if texture.version != self.egui_texture_version {
+                    self.egui_texture_version = texture.version;
+
+                    let data = texture
+                        .pixels
+                        .iter()
+                        .flat_map(|&r| vec![r, r, r, r])
+                        .collect::<Vec<_>>();
+
+                    let font_texture = Texture::new(texture.width as _, texture.height as _, data);
+                    let font_image =
+                        TextureImage::new(self.device.clone(), &self.command_pool, &font_texture);
+
+                    self.textures.insert(FONT_IMAGE_ID, font_texture);
+                    self.texture_images.insert(FONT_IMAGE_ID, font_image);
+                    //
+                    {
+                        let descriptor_set_manager =
+                            self.ui_pipeline.as_ref().unwrap().descriptor_set_manager();
+                        if let Some(font_image) = self.texture_images.get(&FONT_IMAGE_ID) {
+                            self.swapchain
+                                .as_ref()
+                                .unwrap()
+                                .images()
+                                .iter()
+                                .enumerate()
+                                .for_each(|(i, _)| {
+                                    let image_info = [vk::DescriptorImageInfoBuilder::new()
+                                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                                        .image_view(font_image.image_view().handle())
+                                        .sampler(font_image.sampler().handle())];
+
+                                    let descriptor_writes =
+                                        [descriptor_set_manager.bind_image(i as _, 0, &image_info)];
+
+                                    descriptor_set_manager.update_descriptors(&descriptor_writes);
+                                });
+                        }
+                    }
+                }
+            }
 
             let push_constants = [[
                 swapchain.extent().width as f32,
@@ -158,6 +209,15 @@ impl Renderer {
                     &self.device,
                     vk::PipelineBindPoint::GRAPHICS,
                     ui_pipeline.handle(),
+                );
+                // bind descriptors sets
+                command_buffer.bind_descriptor_sets(
+                    &self.device,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    ui_pipeline.pipeline_layout().handle(),
+                    &[ui_pipeline
+                        .descriptor_set_manager()
+                        .descriptor_set(self.current_frame)],
                 );
                 command_buffer.push_constants(
                     &self.device,
@@ -401,4 +461,6 @@ impl Renderer {
         self.uniform_buffers
             .resize_with(count, || UniformBuffer::new(self.device.clone()));
     }
+
+    pub fn upload_font_texture(&mut self, egui: &egui::CtxRef) {}
 }

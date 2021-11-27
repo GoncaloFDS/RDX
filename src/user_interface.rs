@@ -24,6 +24,10 @@ pub struct UserInterface {
 }
 
 impl UserInterface {
+    pub fn egui(&self) -> &egui::CtxRef {
+        &self.egui
+    }
+
     pub fn output(&self) -> &egui::Output {
         &self.output
     }

@@ -282,7 +282,33 @@ impl GraphicsPipeline {
             0,
             size_of::<PushConstant>() as _,
         );
-        let pipeline_layout = PipelineLayout::new(device.clone(), &[], &[push_constant_ranges]);
+
+        let descriptor_bindings = [DescriptorBinding::new(
+            0,
+            1,
+            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            vk::ShaderStageFlags::FRAGMENT,
+        )];
+
+        let descriptor_set_manager =
+            DescriptorSetManager::new(device.clone(), &descriptor_bindings, 3);
+
+        // swapchain.images().iter().enumerate().for_each(|(i, _)| {
+        //     let image_info = [vk::DescriptorImageInfoBuilder::new()
+        //         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+        //         .image_view(font_image.image_view().handle())
+        //         .sampler(font_image.sampler().handle())];
+        //
+        //     let descriptor_writes = [descriptor_set_manager.bind_image(i as _, 0, &image_info)];
+        //
+        //     descriptor_set_manager.update_descriptors(&descriptor_writes);
+        // });
+
+        let pipeline_layout = PipelineLayout::new(
+            device.clone(),
+            &[descriptor_set_manager.descriptor_set_layout()],
+            &[push_constant_ranges],
+        );
 
         let render_pass = RenderPass::new(
             device.clone(),
@@ -326,7 +352,7 @@ impl GraphicsPipeline {
         GraphicsPipeline {
             handle: graphics_pipeline,
             device,
-            descriptor_set_manager: None,
+            descriptor_set_manager: Some(descriptor_set_manager),
             pipeline_layout,
             render_pass,
         }

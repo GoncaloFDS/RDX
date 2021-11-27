@@ -1,3 +1,4 @@
+use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_pool::CommandPool;
 use crate::vulkan::depth_buffer::DepthBuffer;
 use crate::vulkan::device::Device;
@@ -16,6 +17,18 @@ pub struct Image {
 }
 
 impl Image {
+    pub fn handle(&self) -> vk::Image {
+        self.handle
+    }
+
+    pub fn extent(&self) -> vk::Extent2D {
+        self.extent
+    }
+
+    pub fn format(&self) -> vk::Format {
+        self.format
+    }
+
     pub fn new(
         device: Rc<Device>,
         extent: vk::Extent2D,
@@ -143,8 +156,35 @@ impl Image {
         self.image_layout = new_layout;
     }
 
-    pub fn copy_from(&self) {
-        todo!()
+    pub fn copy_from(&self, command_pool: &CommandPool, buffer: &Buffer) {
+        command_pool.single_time_submit(|command_buffer| {
+            let region = vk::BufferImageCopyBuilder::new()
+                .buffer_offset(0)
+                .buffer_row_length(0)
+                .buffer_image_height(0)
+                .image_subresource(vk::ImageSubresourceLayers {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    mip_level: 0,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                .image_extent(vk::Extent3D {
+                    width: self.extent.width,
+                    height: self.extent.height,
+                    depth: 1,
+                });
+
+            unsafe {
+                self.device.cmd_copy_buffer_to_image(
+                    command_buffer,
+                    buffer.handle(),
+                    self.handle,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &[region],
+                );
+            }
+        });
     }
 
     fn get_memory_requirements(&self) -> vk::MemoryRequirements {
