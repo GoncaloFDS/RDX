@@ -1,4 +1,3 @@
-use crate::vulkan::depth_buffer::DepthBuffer;
 use crate::vulkan::descriptor_binding::DescriptorBinding;
 use crate::vulkan::descriptor_set_manager::DescriptorSetManager;
 use crate::vulkan::device::Device;
@@ -8,6 +7,7 @@ use crate::vulkan::shader_module::ShaderModule;
 use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::uniform_buffer::UniformBuffer;
 use crate::vulkan::vertex::{EguiVertex, Vertex};
+use bytemuck::{Pod, Zeroable};
 use erupt::vk;
 use glam::Vec2;
 use std::ffi::CStr;
@@ -351,3 +351,12 @@ impl GraphicsPipeline {
         }
     }
 }
+
+#[derive(Copy, Clone, Default)]
+pub struct PushConstants {
+    pub screen_size: Vec2,
+}
+
+unsafe impl Zeroable for PushConstants {}
+
+unsafe impl Pod for PushConstants {}

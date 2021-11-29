@@ -2,7 +2,6 @@ use crate::vulkan::depth_buffer::DepthBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::swapchain::Swapchain;
 use erupt::vk;
-use std::ops::Deref;
 use std::rc::Rc;
 
 pub struct RenderPass {

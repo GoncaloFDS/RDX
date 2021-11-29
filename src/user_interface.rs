@@ -4,17 +4,18 @@ use std::rc::Rc;
 use winit::event::WindowEvent;
 
 #[derive(Debug, PartialEq)]
-enum EguiTheme {
+pub enum EguiTheme {
     Dark,
     Light,
 }
 
 pub struct Settings {
-    theme: EguiTheme,
-    rotation: f32,
-    light_position: Vec3,
-    text: String,
+    pub theme: EguiTheme,
+    pub rotation: f32,
+    pub light_position: Vec3,
+    pub text: String,
 }
+
 pub struct UserInterface {
     egui: egui::CtxRef,
     egui_state: egui_winit::State,
@@ -37,6 +38,14 @@ impl UserInterface {
         &self.clipped_meshes
     }
 
+    pub fn settings(&self) -> &Settings {
+        &self.settings
+    }
+
+    pub fn settings_as_mut(&mut self) -> &mut Settings {
+        &mut self.settings
+    }
+
     pub fn new(window: Rc<Window>) -> Self {
         let egui = egui::CtxRef::default();
         let egui_state = egui_winit::State::new(&window);
@@ -50,7 +59,7 @@ impl UserInterface {
                 theme: EguiTheme::Dark,
                 rotation: 0.0,
                 light_position: Default::default(),
-                text: "".to_string(),
+                text: "porreiro pah".to_string(),
             },
         }
     }
@@ -59,7 +68,7 @@ impl UserInterface {
         self.egui_state.on_event(&self.egui, window_event)
     }
 
-    pub fn render(&mut self) {
+    pub fn update(&mut self) {
         self.begin_frame();
         self.draw_settings();
         self.end_frame();

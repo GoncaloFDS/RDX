@@ -115,9 +115,8 @@ impl Engine {
 
     pub fn run(&mut self) {
         self.camera.update_camera(self.time.delta_time());
-        self.renderer.update(&self.camera);
-        self.renderer.draw_frame(&mut self.ui);
-        // self.renderer.draw_ui(&mut self.ui);
+        self.renderer.update(&self.camera, &mut self.ui);
+        self.renderer.draw_frame();
         self.renderer.present_frame();
         self.time.tick();
     }

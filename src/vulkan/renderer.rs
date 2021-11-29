@@ -8,18 +8,22 @@ use crate::vulkan::depth_buffer::DepthBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::fence::Fence;
 use crate::vulkan::framebuffer::Framebuffer;
-use crate::vulkan::graphics_pipeline::GraphicsPipeline;
+use crate::vulkan::graphics_pipeline::{GraphicsPipeline, PushConstants};
+use crate::vulkan::model::DrawIndexed;
 use crate::vulkan::render_pass::RenderPass;
-use crate::vulkan::scene::{Scene, Texture, TextureImage};
+use crate::vulkan::scene::Scene;
 use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
+use crate::vulkan::texture::Texture;
+use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::EguiVertex;
 use erupt::vk;
-use glam::{vec2, vec4, Vec2};
+use glam::{vec2, vec4};
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::rc::Rc;
+use std::sync::Arc;
 use winit::window::Window;
 
 const VERTICES_PER_QUAD: u64 = 4;
@@ -27,10 +31,6 @@ const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
 
 const FONT_IMAGE_ID: u32 = 10;
-
-pub struct PushConstants {
-    pub screen_size: Vec2,
-}
 
 pub struct Renderer {
     device: Rc<Device>,
@@ -52,6 +52,7 @@ pub struct Renderer {
     textures: HashMap<u32, Texture>,
     texture_images: HashMap<u32, TextureImage>,
     egui_texture_version: u64,
+    draw_indexed: Vec<DrawIndexed>,
 }
 
 impl Renderer {
@@ -88,6 +89,7 @@ impl Renderer {
             textures: Default::default(),
             texture_images: Default::default(),
             egui_texture_version: 0,
+            draw_indexed: vec![],
         }
     }
 
@@ -124,7 +126,7 @@ impl Renderer {
         self.setup(window);
     }
 
-    pub fn update(&mut self, camera: &Camera) {
+    pub fn update(&mut self, camera: &Camera, ui: &mut UserInterface) {
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
         let ubo = UniformBufferObject {
@@ -132,166 +134,136 @@ impl Renderer {
             projection: camera.projection(aspect_ratio).into(),
         };
         self.uniform_buffers[self.current_frame].update_gpu_buffer(&ubo);
+
+        ui.update();
+
+        self.update_ui_buffers(ui);
+        let texture = ui.egui().texture();
+        if texture.version != self.egui_texture_version {
+            self.update_font_texture(texture);
+        }
     }
 
-    pub fn draw_frame(&mut self, ui: &mut UserInterface) {
-        let fence = &self.fences[self.current_frame];
-        let render_semaphore = &self.render_semaphores[self.current_frame];
-        let present_semaphore = &self.present_semaphores[self.current_frame];
+    fn update_ui_buffers(&mut self, ui: &mut UserInterface) {
+        let mut vertex_start = 0;
+        let mut index_start = 0;
+        self.draw_indexed.clear();
+        for egui::ClippedMesh(rect, mesh) in ui.clipped_meshes() {
+            if mesh.vertices.is_empty() || mesh.indices.is_empty() {
+                continue;
+            }
 
-        let timeout = u64::MAX;
-        fence.wait(timeout);
+            let vertices = mesh
+                .vertices
+                .iter()
+                .map(|vertex| {
+                    EguiVertex::new(
+                        vec2(vertex.pos.x, vertex.pos.y),
+                        vec2(vertex.uv.x, vertex.uv.y),
+                        vec4(
+                            vertex.color.r() as f32 / 255.0,
+                            vertex.color.g() as f32 / 255.0,
+                            vertex.color.b() as f32 / 255.0,
+                            vertex.color.a() as f32 / 255.0,
+                        ),
+                    )
+                })
+                .collect::<Vec<_>>();
 
-        if let Some(current_frame) = self
-            .swapchain
-            .acquire_next_image(timeout, Some(render_semaphore.handle()))
-        {
-            self.current_frame = current_frame;
-        } else {
-            log::debug!("failed to acquire next image");
-            return;
+            let id = 0;
+
+            self.vertex_buffers[id].write_data(&vertices, vertex_start);
+            self.index_buffers[id].write_data(&mesh.indices, index_start);
+
+            self.draw_indexed.push(DrawIndexed {
+                vertex_offset: vertex_start * size_of::<EguiVertex>() as u64,
+                index_offset: index_start * size_of::<u32>() as u64,
+                index_count: mesh.indices.len() as u32,
+                id,
+            });
+
+            vertex_start += mesh.vertices.len() as u64;
+            index_start += mesh.indices.len() as u64;
         }
+    }
+
+    fn update_font_texture(&mut self, texture: Arc<egui::Texture>) {
+        self.egui_texture_version = texture.version;
+
+        let data = texture
+            .pixels
+            .iter()
+            .flat_map(|&r| vec![r, r, r, r])
+            .collect::<Vec<_>>();
+
+        let font_texture = Texture::new(texture.width as _, texture.height as _, data);
+        let font_image = TextureImage::new(self.device.clone(), &self.command_pool, &font_texture);
+
+        self.textures.insert(FONT_IMAGE_ID, font_texture);
+        self.texture_images.insert(FONT_IMAGE_ID, font_image);
+
+        let descriptor_set_manager = self.ui_pipeline.descriptor_set_manager();
+        if let Some(font_image) = self.texture_images.get(&FONT_IMAGE_ID) {
+            self.swapchain
+                .images()
+                .iter()
+                .enumerate()
+                .for_each(|(i, _)| {
+                    let image_info = [vk::DescriptorImageInfoBuilder::new()
+                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        .image_view(font_image.image_view().handle())
+                        .sampler(font_image.sampler().handle())];
+
+                    let descriptor_writes =
+                        [descriptor_set_manager.bind_image(i as _, 0, &image_info)];
+
+                    descriptor_set_manager.update_descriptors(&descriptor_writes);
+                });
+        }
+    }
+
+    pub fn draw_frame(&mut self) {
+        self.fences[self.current_frame].wait(u64::MAX);
+
+        match self.get_current_frame() {
+            None => {
+                log::debug!("failed to acquire next swapchain image");
+                return;
+            }
+            Some(current_frame) => self.current_frame = current_frame,
+        };
 
         let command_buffer = self.command_pool.begin(self.current_frame as _);
-        self.render(command_buffer, self.current_frame);
 
-        {
-            ui.render();
-            {
-                let texture = ui.egui().texture();
-                if texture.version != self.egui_texture_version {
-                    self.egui_texture_version = texture.version;
+        command_buffer.begin_render_pass(
+            &self.device,
+            self.render_pass.handle(),
+            self.framebuffers[self.current_frame].handle(),
+            self.swapchain.extent(),
+        );
 
-                    let data = texture
-                        .pixels
-                        .iter()
-                        .flat_map(|&r| vec![r, r, r, r])
-                        .collect::<Vec<_>>();
-
-                    let font_texture = Texture::new(texture.width as _, texture.height as _, data);
-                    let font_image =
-                        TextureImage::new(self.device.clone(), &self.command_pool, &font_texture);
-
-                    self.textures.insert(FONT_IMAGE_ID, font_texture);
-                    self.texture_images.insert(FONT_IMAGE_ID, font_image);
-                    //
-                    {
-                        let descriptor_set_manager = self.ui_pipeline.descriptor_set_manager();
-                        if let Some(font_image) = self.texture_images.get(&FONT_IMAGE_ID) {
-                            self.swapchain
-                                .images()
-                                .iter()
-                                .enumerate()
-                                .for_each(|(i, _)| {
-                                    let image_info = [vk::DescriptorImageInfoBuilder::new()
-                                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                        .image_view(font_image.image_view().handle())
-                                        .sampler(font_image.sampler().handle())];
-
-                                    let descriptor_writes =
-                                        [descriptor_set_manager.bind_image(i as _, 0, &image_info)];
-
-                                    descriptor_set_manager.update_descriptors(&descriptor_writes);
-                                });
-                        }
-                    }
-                }
-            }
-
-            let push_constants = [[
-                self.swapchain.extent().width as f32,
-                self.swapchain.extent().height as f32,
-            ]];
-
-            {
-                command_buffer.bind_pipeline(
-                    &self.device,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.ui_pipeline.handle(),
-                );
-                // bind descriptors sets
-                command_buffer.bind_descriptor_sets(
-                    &self.device,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.ui_pipeline.pipeline_layout().handle(),
-                    &[self
-                        .ui_pipeline
-                        .descriptor_set_manager()
-                        .descriptor_set(self.current_frame)],
-                );
-                command_buffer.push_constants(
-                    &self.device,
-                    self.ui_pipeline.pipeline_layout().handle(),
-                    vk::ShaderStageFlags::VERTEX,
-                    0,
-                    &push_constants,
-                );
-            }
-
-            let mut vertex_start = 0;
-            let mut index_start = 0;
-            for egui::ClippedMesh(rect, mesh) in ui.clipped_meshes() {
-                if mesh.vertices.is_empty() || mesh.indices.is_empty() {
-                    continue;
-                }
-                // user image...
-                // ...
-                //
-
-                let vertices_count = mesh.vertices.len() as u64;
-                let indices_count = mesh.indices.len() as u64;
-
-                {
-                    let vertices = mesh
-                        .vertices
-                        .iter()
-                        .map(|vertex| {
-                            EguiVertex::new(
-                                vec2(vertex.pos.x, vertex.pos.y),
-                                vec2(vertex.uv.x, vertex.uv.y),
-                                vec4(
-                                    vertex.color.r() as f32 / 255.0,
-                                    vertex.color.g() as f32 / 255.0,
-                                    vertex.color.b() as f32 / 255.0,
-                                    vertex.color.a() as f32 / 255.0,
-                                ),
-                            )
-                        })
-                        .collect::<Vec<_>>();
-                    self.vertex_buffers[0].write_data(&vertices, vertex_start);
-                    let indices = &mesh.indices;
-                    self.index_buffers[0].write_data(&indices, index_start);
-                    // bind vertex and index buffers
-                    let buffers = [&self.vertex_buffers[0]];
-                    command_buffer.bind_vertex_buffer(
-                        &self.device,
-                        &buffers,
-                        &[vertex_start * size_of::<EguiVertex>() as u64],
-                    );
-                    command_buffer.bind_index_buffer(
-                        &self.device,
-                        &self.index_buffers[0],
-                        index_start * size_of::<u32>() as u64,
-                    );
-                    // draw
-                    command_buffer.draw_indexed(&self.device, indices.len() as _);
-                }
-                vertex_start += vertices_count;
-                index_start += indices_count;
-            }
-        }
+        self.render(command_buffer);
+        self.render_ui(command_buffer);
 
         command_buffer.end_render_pass(&self.device);
         command_buffer.end(&self.device);
-        fence.reset();
+
+        self.fences[self.current_frame].reset();
 
         self.device.submit(
             &[command_buffer.handle()],
-            &[render_semaphore.handle()],
-            &[present_semaphore.handle()],
+            &[self.render_semaphores[self.current_frame].handle()],
+            &[self.present_semaphores[self.current_frame].handle()],
             &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
-            Some(fence.handle()),
+            Some(self.fences[self.current_frame].handle()),
         );
+    }
+
+    fn get_current_frame(&self) -> Option<usize> {
+        self.swapchain.acquire_next_image(
+            u64::MAX,
+            Some(self.render_semaphores[self.current_frame].handle()),
+        )
     }
 
     pub fn present_frame(&mut self) {
@@ -306,20 +278,12 @@ impl Renderer {
         self.current_frame = (self.current_frame + 1) % self.fences.len();
     }
 
-    fn render(&self, command_buffer: CommandBuffer, image_index: usize) {
-        command_buffer.begin_render_pass(
-            &self.device,
-            self.render_pass.handle(),
-            self.framebuffers[image_index].handle(),
-            self.swapchain.extent(),
-        );
-
+    fn render(&self, command_buffer: CommandBuffer) {
         command_buffer.bind_pipeline(
             &self.device,
             vk::PipelineBindPoint::GRAPHICS,
             self.graphics_pipeline.handle(),
         );
-        // bind descriptors sets
         command_buffer.bind_descriptor_sets(
             &self.device,
             vk::PipelineBindPoint::GRAPHICS,
@@ -327,14 +291,61 @@ impl Renderer {
             &[self
                 .graphics_pipeline
                 .descriptor_set_manager()
-                .descriptor_set(image_index)],
+                .descriptor_set(self.current_frame)],
         );
-        // bind vertex and index buffers
-        let buffers = [&self.vertex_buffers[1]];
-        command_buffer.bind_vertex_buffer(&self.device, &buffers, &[0]);
+
+        command_buffer.bind_vertex_buffer(&self.device, &[&self.vertex_buffers[1]], &[0]);
         command_buffer.bind_index_buffer(&self.device, &self.index_buffers[1], 0);
-        // draw
         command_buffer.draw_indexed(&self.device, 3);
+    }
+
+    fn render_ui(&mut self, command_buffer: CommandBuffer) {
+        let push_constants = PushConstants {
+            screen_size: vec2(
+                self.swapchain.extent().width as f32,
+                self.swapchain.extent().height as f32,
+            ),
+        };
+
+        command_buffer.bind_pipeline(
+            &self.device,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.ui_pipeline.handle(),
+        );
+
+        command_buffer.bind_descriptor_sets(
+            &self.device,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.ui_pipeline.pipeline_layout().handle(),
+            &[self
+                .ui_pipeline
+                .descriptor_set_manager()
+                .descriptor_set(self.current_frame)],
+        );
+
+        command_buffer.push_constants(
+            &self.device,
+            self.ui_pipeline.pipeline_layout().handle(),
+            vk::ShaderStageFlags::VERTEX,
+            0,
+            &push_constants,
+        );
+
+        for draw_indexed in &self.draw_indexed {
+            command_buffer.bind_vertex_buffer(
+                &self.device,
+                &[&self.vertex_buffers[draw_indexed.id]],
+                &[draw_indexed.vertex_offset],
+            );
+
+            command_buffer.bind_index_buffer(
+                &self.device,
+                &self.index_buffers[draw_indexed.id],
+                draw_indexed.index_offset,
+            );
+
+            command_buffer.draw_indexed(&self.device, draw_indexed.index_count);
+        }
     }
 
     pub fn shutdown(&self) {
@@ -453,8 +464,6 @@ impl Renderer {
         self.uniform_buffers
             .resize_with(count, || UniformBuffer::new(self.device.clone()));
     }
-
-    pub fn upload_font_texture(&mut self, egui: &egui::CtxRef) {}
 }
 
 impl Drop for Renderer {

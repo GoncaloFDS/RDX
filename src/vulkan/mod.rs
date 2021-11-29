@@ -25,5 +25,7 @@ mod semaphore;
 mod shader_module;
 mod surface;
 mod swapchain;
+mod texture;
+mod texture_image;
 mod uniform_buffer;
 mod vertex;

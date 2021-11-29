@@ -143,9 +143,10 @@ impl CommandBuffer {
         layout: vk::PipelineLayout,
         stages: vk::ShaderStageFlags,
         offset: u32,
-        push_constants: &[T],
+        push_constants: &T,
     ) {
-        let data: &[u8] = cast_slice(push_constants);
+        let slice = [*push_constants];
+        let data: &[u8] = cast_slice(&slice);
         unsafe {
             device.cmd_push_constants(
                 self.handle,

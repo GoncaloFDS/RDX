@@ -15,7 +15,7 @@ impl Model {
         &self.indices
     }
 
-    pub fn new() -> Self {
+    pub fn triangle() -> Self {
         let vertices = vec![
             Vertex::new(
                 vec3(-0.5, -0.5, 0.0),
@@ -36,4 +36,11 @@ impl Model {
 
         Model { vertices, indices }
     }
+}
+
+pub struct DrawIndexed {
+    pub vertex_offset: u64,
+    pub index_offset: u64,
+    pub index_count: u32,
+    pub id: usize,
 }
