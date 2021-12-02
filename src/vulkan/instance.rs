@@ -1,5 +1,4 @@
 use crate::vulkan::debug_utils;
-use erupt::extensions::ext_debug_utils;
 use erupt::{vk, EntryLoader, InstanceLoader};
 use std::ffi::CString;
 use std::ops::Deref;
@@ -46,7 +45,7 @@ fn create_instance(entry: &EntryLoader) -> InstanceLoader {
     let mut instance_extensions = enumerate_required_surface_extensions();
 
     if cfg!(debug_assertions) {
-        instance_extensions.push(ext_debug_utils::EXT_DEBUG_UTILS_EXTENSION_NAME);
+        instance_extensions.push(vk::EXT_DEBUG_UTILS_EXTENSION_NAME);
     }
 
     let mut instance_layers = Vec::new();
@@ -59,7 +58,7 @@ fn create_instance(entry: &EntryLoader) -> InstanceLoader {
         .enabled_extension_names(&instance_extensions)
         .enabled_layer_names(&instance_layers);
 
-    unsafe { InstanceLoader::new(&entry, &instance_info, None).unwrap() }
+    unsafe { InstanceLoader::new(entry, &instance_info, None).unwrap() }
 }
 
 fn enumerate_required_surface_extensions() -> Vec<*const c_char> {

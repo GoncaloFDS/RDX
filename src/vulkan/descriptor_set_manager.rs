@@ -99,14 +99,16 @@ impl DescriptorSetManager {
         &self,
         index: u32,
         binding: u32,
-        acceleration_structures: &'a mut vk::WriteDescriptorSetAccelerationStructureKHRBuilder<'a>,
+        acceleration_structures: &'a vk::WriteDescriptorSetAccelerationStructureKHRBuilder<'a>,
     ) -> vk::WriteDescriptorSetBuilder<'a> {
-        vk::WriteDescriptorSetBuilder::new()
+        let mut write = vk::WriteDescriptorSetBuilder::new()
             .dst_set(self.descriptor_sets[index as usize])
             .dst_binding(binding)
             .dst_array_element(0)
             .descriptor_type(*self.binding_types.get(&binding).unwrap())
-            .extend_from(&mut *acceleration_structures)
+            .extend_from(acceleration_structures);
+        write.descriptor_count = 1;
+        write
     }
 
     pub fn update_descriptors(&self, descriptor_writes: &[vk::WriteDescriptorSetBuilder<'_>]) {

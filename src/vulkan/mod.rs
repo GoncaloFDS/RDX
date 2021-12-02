@@ -19,6 +19,7 @@ mod image_view;
 mod instance;
 mod model;
 mod pipeline_layout;
+mod raytracing;
 mod render_pass;
 mod sampler;
 mod semaphore;

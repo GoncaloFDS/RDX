@@ -5,7 +5,7 @@ use crate::vulkan::image::Image;
 use crate::vulkan::image_view::ImageView;
 use crate::vulkan::sampler::{Sampler, SamplerInfo};
 use crate::vulkan::texture::Texture;
-use erupt::vk1_0;
+use erupt::vk;
 use std::rc::Rc;
 
 pub struct TextureImage {
@@ -33,18 +33,18 @@ impl TextureImage {
         let mut staging_buffer = Buffer::new(
             device.clone(),
             image_size as u64,
-            vk1_0::BufferUsageFlags::TRANSFER_SRC,
+            vk::BufferUsageFlags::TRANSFER_SRC,
         );
         staging_buffer.allocate_memory(gpu_alloc::UsageFlags::HOST_ACCESS);
         staging_buffer.write_data(texture.pixels(), 0);
 
         let mut image = Image::new(
             device.clone(),
-            vk1_0::Extent2D {
+            vk::Extent2D {
                 width: texture.width(),
                 height: texture.height(),
             },
-            vk1_0::Format::R8G8B8A8_UNORM,
+            vk::Format::R8G8B8A8_UNORM,
             None,
             None,
         );
@@ -54,13 +54,13 @@ impl TextureImage {
             device.clone(),
             image.handle(),
             image.format(),
-            vk1_0::ImageAspectFlags::COLOR,
+            vk::ImageAspectFlags::COLOR,
         );
         let sampler = Sampler::new(device.clone(), &SamplerInfo::default());
 
-        image.transition_image_layout(command_pool, vk1_0::ImageLayout::TRANSFER_DST_OPTIMAL);
+        image.transition_image_layout(command_pool, vk::ImageLayout::TRANSFER_DST_OPTIMAL);
         image.copy_from(command_pool, &staging_buffer);
-        image.transition_image_layout(command_pool, vk1_0::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+        image.transition_image_layout(command_pool, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
 
         TextureImage {
             image,

@@ -629,6 +629,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "hecs"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e1ac53b75ff2c09dc427da621dd99609981f97142e82b4cb1fb25b60a2f6d41"
+dependencies = [
+ "hashbrown",
+]
+
+[[package]]
+name = "hecs-hierarchy"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdb5a73be870802667826cbc489b16ecec00f59a418a4d38055c584dc5f22850"
+dependencies = [
+ "hecs",
+ "smallvec",
+]
+
+[[package]]
 name = "hermit-abi"
 version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1167,6 +1186,8 @@ dependencies = [
  "glam",
  "gpu-alloc",
  "gpu-alloc-erupt",
+ "hecs",
+ "hecs-hierarchy",
  "log",
  "memoffset",
  "mint",

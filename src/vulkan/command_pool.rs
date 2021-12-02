@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 pub struct CommandPool {
     device: Rc<Device>,
-    command_pool: vk::CommandPool,
+    handle: vk::CommandPool,
     command_buffers: Vec<CommandBuffer>,
 }
 
@@ -22,14 +22,14 @@ impl CommandPool {
 
         CommandPool {
             device,
-            command_pool,
+            handle: command_pool,
             command_buffers: vec![],
         }
     }
 
     pub fn allocate(&mut self, count: u32) {
         let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
-            .command_pool(self.command_pool)
+            .command_pool(self.handle)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(count);
 
@@ -51,29 +51,24 @@ impl CommandPool {
         command_buffer
     }
 
-    pub fn single_time_submit(&self, action: impl Fn(vk::CommandBuffer)) {
+    pub fn single_time_submit(&self, mut action: impl FnMut(CommandBuffer)) {
         let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
-            .command_pool(self.command_pool)
+            .command_pool(self.handle)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
         let command_buffer =
             unsafe { self.device.allocate_command_buffers(&alloc_info).unwrap()[0] };
 
-        let begin_info = vk::CommandBufferBeginInfoBuilder::new()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        let command_buffer = CommandBuffer::new(command_buffer);
 
-        unsafe {
-            self.device
-                .begin_command_buffer(command_buffer, &begin_info)
-                .unwrap()
-        }
+        command_buffer.begin_one_time_submit(&self.device);
 
         action(command_buffer);
 
-        unsafe { self.device.end_command_buffer(command_buffer).unwrap() }
+        command_buffer.end(&self.device);
 
-        let submit_buffers = [command_buffer];
+        let submit_buffers = [command_buffer.handle()];
         let submit_info = vk::SubmitInfoBuilder::new().command_buffers(&submit_buffers);
 
         let graphics_queue = self.device.graphics_queue();
@@ -83,6 +78,39 @@ impl CommandPool {
                 .queue_submit(graphics_queue, &[submit_info], None)
                 .unwrap();
             self.device.device_wait_idle().unwrap();
+        }
+    }
+
+    pub fn single(
+        device: &Device,
+        command_pool: &CommandPool,
+        mut action: impl FnMut(CommandBuffer),
+    ) {
+        let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
+            .command_pool(command_pool.handle)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+
+        let command_buffer = unsafe { device.allocate_command_buffers(&alloc_info).unwrap()[0] };
+
+        let command_buffer = CommandBuffer::new(command_buffer);
+
+        command_buffer.begin_one_time_submit(device);
+
+        action(command_buffer);
+
+        command_buffer.end(device);
+
+        let submit_buffers = [command_buffer.handle()];
+        let submit_info = vk::SubmitInfoBuilder::new().command_buffers(&submit_buffers);
+
+        let graphics_queue = device.graphics_queue();
+
+        unsafe {
+            device
+                .queue_submit(graphics_queue, &[submit_info], None)
+                .unwrap();
+            device.device_wait_idle().unwrap();
         }
     }
 }
@@ -98,10 +126,9 @@ impl Drop for CommandPool {
                     .map(|cb| cb.handle())
                     .collect::<Vec<_>>();
                 self.device
-                    .free_command_buffers(self.command_pool, &command_buffers);
+                    .free_command_buffers(self.handle, &command_buffers);
             }
-            self.device
-                .destroy_command_pool(Some(self.command_pool), None);
+            self.device.destroy_command_pool(Some(self.handle), None);
         }
     }
 }

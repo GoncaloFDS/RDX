@@ -29,12 +29,13 @@ impl Engine {
         let window = Rc::new(window);
 
         let mut renderer = Renderer::new();
-        renderer.setup(&window);
-
-        let ui = UserInterface::new(window.clone());
 
         let scene = Scene::new();
         renderer.upload_meshes(&scene);
+
+        renderer.setup(&window);
+
+        let ui = UserInterface::new(window.clone());
 
         let engine = Engine {
             time: Time::new(),

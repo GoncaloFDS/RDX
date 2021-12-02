@@ -1,4 +1,7 @@
-/target
+target/
+shaders/*/target
+
+shaders/*/Cargo.lock
+Cargo.lock
+
 .idea
-shaders/raster/target
-shaders/ui/target

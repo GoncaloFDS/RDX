@@ -93,10 +93,10 @@ impl Image {
 
     pub fn transition_image_layout(
         &mut self,
-        command_buffers: &CommandPool,
+        command_pool: &CommandPool,
         new_layout: vk::ImageLayout,
     ) {
-        command_buffers.single_time_submit(|command_buffer| {
+        command_pool.single_time_submit(|command_buffer| {
             let mut aspect_mask;
             if new_layout == vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL {
                 aspect_mask = vk::ImageAspectFlags::DEPTH;
@@ -153,7 +153,7 @@ impl Image {
 
             unsafe {
                 self.device.cmd_pipeline_barrier(
-                    command_buffer,
+                    command_buffer.handle(),
                     source_stage,
                     destination_stage,
                     None,
@@ -188,7 +188,7 @@ impl Image {
 
             unsafe {
                 self.device.cmd_copy_buffer_to_image(
-                    command_buffer,
+                    command_buffer.handle(),
                     buffer.handle(),
                     self.handle,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,

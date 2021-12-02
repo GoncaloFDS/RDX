@@ -6,6 +6,7 @@ use std::{env, ptr};
 
 const RASTER: &[u8] = include_bytes!(env!("raster.spv"));
 const UI: &[u8] = include_bytes!(env!("ui.spv"));
+const RAYTRACING: &[u8] = include_bytes!(env!("raytracing.spv"));
 
 pub struct ShaderModule {
     handle: vk::ShaderModule,
@@ -17,6 +18,7 @@ impl ShaderModule {
         let shader = match shader {
             "raster" => RASTER,
             "ui" => UI,
+            "raytracing" => RAYTRACING,
             _ => panic!(),
         };
 
@@ -39,12 +41,12 @@ impl ShaderModule {
     pub fn create_shader_stage<'a>(
         &self,
         stages: vk::ShaderStageFlagBits,
-        name: &'a CStr,
+        name: &'a str,
     ) -> vk::PipelineShaderStageCreateInfoBuilder<'a> {
         vk::PipelineShaderStageCreateInfoBuilder::new()
             .stage(stages)
             .module(self.handle)
-            .name(name)
+            .name(CStr::from_bytes_with_nul(name.as_bytes()).unwrap())
     }
 }
 

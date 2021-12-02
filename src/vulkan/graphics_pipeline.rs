@@ -10,7 +10,6 @@ use crate::vulkan::vertex::{EguiVertex, Vertex};
 use bytemuck::{Pod, Zeroable};
 use erupt::vk;
 use glam::Vec2;
-use std::ffi::CStr;
 use std::mem::size_of;
 use std::rc::Rc;
 
@@ -174,14 +173,8 @@ impl GraphicsPipeline {
 
         let shader_module = ShaderModule::new(device.clone(), "raster");
         let shader_stages = [
-            shader_module.create_shader_stage(
-                vk::ShaderStageFlagBits::VERTEX,
-                CStr::from_bytes_with_nul(b"main_vs\0").unwrap(),
-            ),
-            shader_module.create_shader_stage(
-                vk::ShaderStageFlagBits::FRAGMENT,
-                CStr::from_bytes_with_nul(b"main_fs\0").unwrap(),
-            ),
+            shader_module.create_shader_stage(vk::ShaderStageFlagBits::VERTEX, "main_vs\0"),
+            shader_module.create_shader_stage(vk::ShaderStageFlagBits::FRAGMENT, "main_fs\0"),
         ];
 
         let pipeline_info = [vk::GraphicsPipelineCreateInfoBuilder::new()
@@ -310,11 +303,13 @@ impl GraphicsPipeline {
         let shader_stages = [
             shader_module.create_shader_stage(
                 vk::ShaderStageFlagBits::VERTEX,
-                CStr::from_bytes_with_nul(b"main_vs\0").unwrap(),
+                "main_vs\0",
+                // CStr::from_bytes_with_nul(b"main_vs\0").unwrap(),
             ),
             shader_module.create_shader_stage(
                 vk::ShaderStageFlagBits::FRAGMENT,
-                CStr::from_bytes_with_nul(b"main_fs\0").unwrap(),
+                "main_fs\0",
+                // CStr::from_bytes_with_nul(b"main_fs\0").unwrap(),
             ),
         ];
 

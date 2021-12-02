@@ -2,7 +2,6 @@ use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
 use bytemuck::{cast_slice, Pod};
 use erupt::vk;
-use erupt::vk::DescriptorSet;
 
 #[derive(Copy, Clone)]
 pub struct CommandBuffer {
@@ -21,6 +20,17 @@ impl CommandBuffer {
     pub fn begin(&self, device: &Device) {
         let begin_info = vk::CommandBufferBeginInfoBuilder::new()
             .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
+
+        unsafe {
+            device
+                .begin_command_buffer(self.handle, &begin_info)
+                .unwrap()
+        }
+    }
+
+    pub fn begin_one_time_submit(&self, device: &Device) {
+        let begin_info = vk::CommandBufferBeginInfoBuilder::new()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
         unsafe {
             device
@@ -117,7 +127,7 @@ impl CommandBuffer {
         device: &Device,
         pipeline_bind_point: vk::PipelineBindPoint,
         pipeline_layout: vk::PipelineLayout,
-        descriptor_sets: &[DescriptorSet],
+        descriptor_sets: &[vk::DescriptorSet],
     ) {
         unsafe {
             device.cmd_bind_descriptor_sets(
@@ -157,5 +167,117 @@ impl CommandBuffer {
                 data.as_ptr() as *const _,
             )
         };
+    }
+
+    pub fn build_acceleration_structure(
+        &self,
+        device: &Device,
+        build_info: &[vk::AccelerationStructureBuildGeometryInfoKHRBuilder],
+        build_offsets: &[*const vk::AccelerationStructureBuildRangeInfoKHR],
+    ) {
+        unsafe {
+            device.cmd_build_acceleration_structures_khr(self.handle, build_info, build_offsets)
+        }
+    }
+
+    pub fn acceleration_structure_memory_barrier(&self, device: &Device) {
+        let memory_barrier = vk::MemoryBarrierBuilder::new()
+            .src_access_mask(
+                vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR
+                    | vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR,
+            )
+            .dst_access_mask(
+                vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR
+                    | vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR,
+            );
+
+        unsafe {
+            device.cmd_pipeline_barrier(
+                self.handle,
+                vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                None,
+                &[memory_barrier],
+                &[],
+                &[],
+            )
+        }
+    }
+
+    pub fn image_memory_barrier(
+        &self,
+        device: &Device,
+        image: vk::Image,
+        subresource: vk::ImageSubresourceRange,
+        src_access_mask: vk::AccessFlags,
+        dst_access_mask: vk::AccessFlags,
+        old_layout: vk::ImageLayout,
+        new_layout: vk::ImageLayout,
+    ) {
+        let image_barrier = vk::ImageMemoryBarrierBuilder::new()
+            .src_access_mask(src_access_mask)
+            .dst_access_mask(dst_access_mask)
+            .old_layout(old_layout)
+            .new_layout(new_layout)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(image)
+            .subresource_range(subresource);
+
+        unsafe {
+            device.cmd_pipeline_barrier(
+                self.handle,
+                vk::PipelineStageFlags::ALL_COMMANDS,
+                vk::PipelineStageFlags::ALL_COMMANDS,
+                None,
+                &[],
+                &[],
+                &[image_barrier],
+            )
+        }
+    }
+
+    pub fn trace_rays(
+        &self,
+        device: &Device,
+        raygen: &vk::StridedDeviceAddressRegionKHR,
+        miss: &vk::StridedDeviceAddressRegionKHR,
+        hit: &vk::StridedDeviceAddressRegionKHR,
+        callable: &vk::StridedDeviceAddressRegionKHR,
+        extent: vk::Extent2D,
+    ) {
+        unsafe {
+            device.cmd_trace_rays_khr(
+                self.handle,
+                raygen,
+                miss,
+                hit,
+                callable,
+                extent.width,
+                extent.height,
+                1,
+            )
+        }
+    }
+
+    pub fn copy_image(
+        &self,
+        device: &Device,
+        src_image: vk::Image,
+        src_layout: vk::ImageLayout,
+        dst_image: vk::Image,
+        dst_layout: vk::ImageLayout,
+        copy_region: vk::ImageCopyBuilder,
+    ) {
+        unsafe {
+            device.cmd_copy_image(
+                self.handle,
+                src_image,
+                src_layout,
+                dst_image,
+                dst_layout,
+                &[copy_region],
+            );
+        }
     }
 }

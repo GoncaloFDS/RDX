@@ -16,6 +16,14 @@ impl Buffer {
         self.handle
     }
 
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        Buffer {
+            device,
+            handle: Default::default(),
+            device_memory: None,
+        }
+    }
+
     pub fn new(device: Rc<Device>, size: u64, usage: vk::BufferUsageFlags) -> Self {
         let create_info = vk::BufferCreateInfoBuilder::new()
             .size(size)
@@ -34,7 +42,9 @@ impl Buffer {
         let size = size_of_val(data) as u64;
 
         let mut buffer = Buffer::new(device, size, usage);
-        buffer.allocate_memory(gpu_alloc::UsageFlags::HOST_ACCESS);
+        buffer.allocate_memory(
+            gpu_alloc::UsageFlags::HOST_ACCESS | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
+        );
 
         let ptr = buffer.device_memory.as_mut().unwrap().map(0, size as _);
 
@@ -66,6 +76,11 @@ impl Buffer {
             .as_mut()
             .unwrap()
             .write_data(data, offset * size_of::<T>() as u64);
+    }
+
+    pub fn get_device_address(&self) -> vk::DeviceAddress {
+        let info = vk::BufferDeviceAddressInfoBuilder::new().buffer(self.handle);
+        unsafe { self.device.get_buffer_device_address(&info) }
     }
 }
 
