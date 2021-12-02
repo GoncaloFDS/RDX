@@ -101,3 +101,12 @@ impl BottomLevelAccelerationStructure {
         )
     }
 }
+
+impl Drop for BottomLevelAccelerationStructure {
+    fn drop(&mut self) {
+        unsafe {
+            self.device
+                .destroy_acceleration_structure_khr(Some(self.handle()), None);
+        }
+    }
+}

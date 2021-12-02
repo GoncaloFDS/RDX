@@ -152,3 +152,12 @@ impl TopLevelAccelerationStructure {
             .build()
     }
 }
+
+impl Drop for TopLevelAccelerationStructure {
+    fn drop(&mut self) {
+        unsafe {
+            self.device
+                .destroy_acceleration_structure_khr(Some(self.handle()), None);
+        }
+    }
+}

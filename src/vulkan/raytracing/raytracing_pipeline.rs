@@ -255,3 +255,11 @@ impl RaytracingPipeline {
         }
     }
 }
+
+impl Drop for RaytracingPipeline {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_pipeline(Some(self.handle), None);
+        }
+    }
+}
