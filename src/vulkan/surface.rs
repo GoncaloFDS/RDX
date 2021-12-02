@@ -30,8 +30,13 @@ impl Surface {
         }
     }
 
-    pub fn cleanup(&mut self) {
+    pub fn cleanup(&mut self) {}
+}
+
+impl Drop for Surface {
+    fn drop(&mut self) {
         if !self.handle.is_null() {
+            log::debug!("Dropping surface");
             unsafe {
                 self.device
                     .instance()

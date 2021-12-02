@@ -96,7 +96,7 @@ impl Image {
         command_pool: &CommandPool,
         new_layout: vk::ImageLayout,
     ) {
-        command_pool.single_time_submit(|command_buffer| {
+        CommandPool::single_time_submit(&self.device, command_pool, |command_buffer| {
             let mut aspect_mask;
             if new_layout == vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL {
                 aspect_mask = vk::ImageAspectFlags::DEPTH;
@@ -168,7 +168,7 @@ impl Image {
     }
 
     pub fn copy_from(&self, command_pool: &CommandPool, buffer: &Buffer) {
-        command_pool.single_time_submit(|command_buffer| {
+        CommandPool::single_time_submit(&self.device, command_pool, |command_buffer| {
             let region = vk::BufferImageCopyBuilder::new()
                 .buffer_offset(0)
                 .buffer_row_length(0)

@@ -147,26 +147,28 @@ impl Renderer {
         }
     }
 
-    pub fn setup(&mut self, window: &Window) {
+    fn stuff(&mut self, window: &Window) {
         self.create_swapchain(window);
         self.create_depth_buffer(window);
         self.create_default_render_pass();
         self.create_uniform_buffers();
         self.create_ouput_images();
-        self.create_acceleration_structure();
+        self.create_acceleration_structures();
         self.create_pipelines();
         self.create_shader_binding_table();
         self.create_framebuffers();
         self.create_command_buffers();
         self.create_sync_structures();
+    }
+
+    pub fn setup(&mut self, window: &Window) {
+        self.stuff(window);
         self.allocate_ui_buffers();
     }
 
     fn delete_swapchain(&mut self) {
         self.command_pool.reset();
-        self.swapchain.cleanup();
-        self.ui_pipeline.cleanup();
-        self.graphics_pipeline.cleanup();
+        self.swapchain = Swapchain::uninitialized(self.device.clone());
         self.render_pass.cleanup();
         self.uniform_buffers.clear();
         self.framebuffers.clear();
@@ -180,7 +182,7 @@ impl Renderer {
     pub fn recreate_swapchain(&mut self, window: &Window) {
         self.device.wait_idle();
         self.delete_swapchain();
-        self.setup(window);
+        self.stuff(window);
     }
 
     pub fn update(&mut self, camera: &Camera, ui: &mut UserInterface) {
@@ -674,29 +676,59 @@ impl Renderer {
             .resize_with(count, || UniformBuffer::new(self.device.clone()));
     }
 
-    fn create_acceleration_structure(&mut self) {
-        let mut blas = self.allocate_blas_buffers();
-        self.command_pool.single_time_submit(|command_buffer| {
-            self.create_blas(command_buffer, &mut blas);
+    fn create_acceleration_structures(&mut self) {
+        CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
+            Renderer::allocate_blas_buffers(
+                self.device.clone(),
+                &mut self.blas,
+                &mut self.blas_buffer,
+                &mut self.blas_scratch_buffer,
+                &self.vertex_buffers,
+                &self.index_buffers,
+                &self.raytracing_properties,
+            );
+            Renderer::create_blas(
+                command_buffer,
+                &mut self.blas,
+                &self.blas_scratch_buffer,
+                &self.blas_buffer,
+            );
+            command_buffer.acceleration_structure_memory_barrier(&self.device);
+            Renderer::allocate_tlas_buffers(
+                self.device.clone(),
+                &mut self.tlas,
+                &mut self.tlas_buffer,
+                &mut self.tlas_scratch_buffer,
+                &mut self.instances_buffer,
+                &self.blas,
+                &self.raytracing_properties,
+            );
+            Renderer::create_tlas(
+                command_buffer,
+                &mut self.tlas,
+                &self.tlas_scratch_buffer,
+                &self.tlas_buffer,
+            );
         });
-        self.blas = blas;
-
-        let mut tlas = self.allocate_tlas_buffers();
-        self.command_pool.single_time_submit(|command_buffer| {
-            self.create_tlas(command_buffer, &mut tlas);
-        });
-        self.tlas = tlas;
     }
 
-    fn allocate_blas_buffers(&mut self) -> Vec<BottomLevelAccelerationStructure> {
+    fn allocate_blas_buffers(
+        device: Rc<Device>,
+        blas: &mut Vec<BottomLevelAccelerationStructure>,
+        blas_buffer: &mut Buffer,
+        blas_scratch_buffer: &mut Buffer,
+        vertex_buffers: &[Buffer],
+        index_buffers: &[Buffer],
+        raytracing_properties: &RaytracingProperties,
+    ) {
         let mut geometries = BottomLevelGeometry::default();
-        let mut blas = vec![];
+        blas.clear();
 
         //for each mesh
         {
             geometries.add_geometry_triangles(
-                &self.vertex_buffers[0],
-                &self.index_buffers[0],
+                &vertex_buffers[0],
+                &index_buffers[0],
                 0,
                 3,
                 0,
@@ -705,39 +737,36 @@ impl Renderer {
             );
 
             blas.push(BottomLevelAccelerationStructure::new(
-                self.device.clone(),
-                self.raytracing_properties,
+                device.clone(),
+                *raytracing_properties,
                 geometries,
             ));
         }
 
         let memory_requirements = get_total_memory_requirements(&blas);
 
-        self.blas_buffer = Buffer::new(
-            self.device.clone(),
+        *blas_buffer = Buffer::new(
+            device.clone(),
             memory_requirements.acceleration_structure_size,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
         );
-        self.blas_buffer
-            .allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
+        blas_buffer.allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
 
-        self.blas_scratch_buffer = Buffer::new(
-            self.device.clone(),
+        *blas_scratch_buffer = Buffer::new(
+            device,
             memory_requirements.build_scratch_size,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
         );
-        self.blas_scratch_buffer
-            .allocate_memory(gpu_alloc::UsageFlags::DEVICE_ADDRESS);
-
-        blas
+        blas_scratch_buffer.allocate_memory(gpu_alloc::UsageFlags::DEVICE_ADDRESS);
     }
 
     fn create_blas(
-        &self,
         command_buffer: CommandBuffer,
         blas: &mut [BottomLevelAccelerationStructure],
+        scratch_buffer: &Buffer,
+        buffer: &Buffer,
     ) {
         let mut result_offset = 0;
         let mut scratch_offset = 0;
@@ -745,9 +774,9 @@ impl Renderer {
         for b in blas {
             b.generate(
                 &command_buffer,
-                &self.blas_scratch_buffer,
+                scratch_buffer,
                 scratch_offset,
-                &self.blas_buffer,
+                buffer,
                 result_offset,
             );
 
@@ -756,66 +785,63 @@ impl Renderer {
         }
     }
 
-    fn allocate_tlas_buffers(&mut self) -> Vec<TopLevelAccelerationStructure> {
+    fn allocate_tlas_buffers(
+        device: Rc<Device>,
+        tlas: &mut Vec<TopLevelAccelerationStructure>,
+        tlas_buffer: &mut Buffer,
+        tlas_scratch_buffer: &mut Buffer,
+        instances_buffer: &mut Buffer,
+        blas: &[BottomLevelAccelerationStructure],
+        raytracing_properties: &RaytracingProperties,
+    ) {
         let instances = vec![TopLevelAccelerationStructure::create_instance(
-            &self.device,
-            &self.blas[0],
+            &device,
+            &blas[0],
             Mat4::IDENTITY,
             0,
             0,
         )];
 
-        self.instances_buffer = Buffer::with_data(
-            self.device.clone(),
+        *instances_buffer = Buffer::with_data(
+            device.clone(),
             &instances,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
         );
 
-        let tlas = vec![TopLevelAccelerationStructure::new(
-            self.device.clone(),
-            self.raytracing_properties,
-            self.instances_buffer.get_device_address(),
+        *tlas = vec![TopLevelAccelerationStructure::new(
+            device.clone(),
+            *raytracing_properties,
+            instances_buffer.get_device_address(),
             instances.len() as u32,
         )];
 
-        let memory_requirements = get_total_memory_requirements(&tlas);
+        let memory_requirements = get_total_memory_requirements(tlas);
 
-        self.tlas_buffer = Buffer::new(
-            self.device.clone(),
+        *tlas_buffer = Buffer::new(
+            device.clone(),
             memory_requirements.acceleration_structure_size,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
         );
-        self.tlas_buffer
-            .allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
+        tlas_buffer.allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
 
-        self.tlas_scratch_buffer = Buffer::new(
-            self.device.clone(),
+        *tlas_scratch_buffer = Buffer::new(
+            device.clone(),
             memory_requirements.build_scratch_size,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
         );
-        self.tlas_scratch_buffer
-            .allocate_memory(gpu_alloc::UsageFlags::DEVICE_ADDRESS);
-
-        tlas
+        tlas_scratch_buffer.allocate_memory(gpu_alloc::UsageFlags::DEVICE_ADDRESS);
     }
 
     fn create_tlas(
-        &self,
         command_buffer: CommandBuffer,
         tlas: &mut [TopLevelAccelerationStructure],
+        scratch_buffer: &Buffer,
+        buffer: &Buffer,
     ) {
-        command_buffer.acceleration_structure_memory_barrier(&self.device);
-
-        tlas[0].generate(
-            &command_buffer,
-            &self.tlas_scratch_buffer,
-            0,
-            &self.tlas_buffer,
-            0,
-        );
+        tlas[0].generate(&command_buffer, scratch_buffer, 0, buffer, 0);
     }
 
     fn create_ouput_images(&mut self) {
@@ -876,8 +902,6 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         self.device.wait_idle();
         self.swapchain.cleanup();
-        self.graphics_pipeline.cleanup();
-        self.ui_pipeline.cleanup();
         self.render_pass.cleanup();
     }
 }

@@ -10,6 +10,7 @@ use crate::vulkan::vertex::{EguiVertex, Vertex};
 use bytemuck::{Pod, Zeroable};
 use erupt::vk;
 use glam::Vec2;
+use log::debug;
 use std::mem::size_of;
 use std::rc::Rc;
 
@@ -339,8 +340,10 @@ impl GraphicsPipeline {
             pipeline_layout,
         }
     }
+}
 
-    pub fn cleanup(&mut self) {
+impl Drop for GraphicsPipeline {
+    fn drop(&mut self) {
         unsafe {
             self.device.destroy_pipeline(Some(self.handle), None);
         }

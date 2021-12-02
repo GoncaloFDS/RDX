@@ -214,9 +214,17 @@ impl Swapchain {
     }
 
     pub fn cleanup(&mut self) {
+        // self._surface.cleanup();
+    }
+}
+
+impl Drop for Swapchain {
+    fn drop(&mut self) {
         unsafe {
-            self.device.destroy_swapchain_khr(Some(self.handle), None);
+            if !self.handle.is_null() {
+                log::debug!("Dropping Swapchain");
+                self.device.destroy_swapchain_khr(Some(self.handle), None);
+            }
         }
-        self._surface.cleanup();
     }
 }

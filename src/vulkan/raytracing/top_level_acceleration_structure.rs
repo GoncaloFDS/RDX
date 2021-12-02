@@ -156,6 +156,7 @@ impl TopLevelAccelerationStructure {
 impl Drop for TopLevelAccelerationStructure {
     fn drop(&mut self) {
         unsafe {
+            log::debug!("Dropping tlas");
             self.device
                 .destroy_acceleration_structure_khr(Some(self.handle()), None);
         }

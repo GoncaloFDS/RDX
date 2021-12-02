@@ -51,40 +51,10 @@ impl CommandPool {
         command_buffer
     }
 
-    pub fn single_time_submit(&self, mut action: impl FnMut(CommandBuffer)) {
-        let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
-            .command_pool(self.handle)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1);
-
-        let command_buffer =
-            unsafe { self.device.allocate_command_buffers(&alloc_info).unwrap()[0] };
-
-        let command_buffer = CommandBuffer::new(command_buffer);
-
-        command_buffer.begin_one_time_submit(&self.device);
-
-        action(command_buffer);
-
-        command_buffer.end(&self.device);
-
-        let submit_buffers = [command_buffer.handle()];
-        let submit_info = vk::SubmitInfoBuilder::new().command_buffers(&submit_buffers);
-
-        let graphics_queue = self.device.graphics_queue();
-
-        unsafe {
-            self.device
-                .queue_submit(graphics_queue, &[submit_info], None)
-                .unwrap();
-            self.device.device_wait_idle().unwrap();
-        }
-    }
-
-    pub fn single(
+    pub fn single_time_submit(
         device: &Device,
         command_pool: &CommandPool,
-        mut action: impl FnMut(CommandBuffer),
+        action: impl FnOnce(CommandBuffer),
     ) {
         let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
             .command_pool(command_pool.handle)
