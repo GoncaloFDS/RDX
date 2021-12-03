@@ -169,7 +169,6 @@ impl Renderer {
     fn delete_swapchain(&mut self) {
         self.command_pool.reset();
         self.swapchain = Swapchain::uninitialized(self.device.clone());
-        self.render_pass.cleanup();
         self.uniform_buffers.clear();
         self.framebuffers.clear();
         self.present_semaphores.clear();
@@ -743,7 +742,7 @@ impl Renderer {
             ));
         }
 
-        let memory_requirements = get_total_memory_requirements(&blas);
+        let memory_requirements = get_total_memory_requirements(blas);
 
         *blas_buffer = Buffer::new(
             device.clone(),
@@ -881,6 +880,7 @@ impl Renderer {
             vk::ImageAspectFlags::COLOR,
         );
     }
+
     fn create_shader_binding_table(&mut self) {
         let raygen_groups = [Entry::new(self.raytracing_pipeline.raygen_index())];
         let miss_groups = [Entry::new(self.raytracing_pipeline.miss_index())];
@@ -895,13 +895,5 @@ impl Renderer {
             &miss_groups,
             &hit_groups,
         )
-    }
-}
-
-impl Drop for Renderer {
-    fn drop(&mut self) {
-        self.device.wait_idle();
-        self.swapchain.cleanup();
-        self.render_pass.cleanup();
     }
 }

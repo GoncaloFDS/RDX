@@ -231,6 +231,7 @@ impl RaytracingPipeline {
         ];
 
         let pipeline_info = vk::RayTracingPipelineCreateInfoKHRBuilder::new()
+            .flags(vk::PipelineCreateFlags::empty())
             .stages(&shader_stages)
             .groups(&shader_groups)
             .max_pipeline_ray_recursion_depth(1)

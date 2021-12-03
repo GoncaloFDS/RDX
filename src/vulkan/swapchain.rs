@@ -212,10 +212,6 @@ impl Swapchain {
     fn choose_image_count(_capabilities: &vk::SurfaceCapabilitiesKHR) -> u32 {
         3
     }
-
-    pub fn cleanup(&mut self) {
-        // self._surface.cleanup();
-    }
 }
 
 impl Drop for Swapchain {

@@ -14,7 +14,7 @@ use spirv_std::Image;
 
 #[spirv(miss)]
 pub fn miss(#[spirv(incoming_ray_payload)] out: &mut Vec3) {
-    *out = vec3(0.5, 0.5, 0.5)
+    *out = vec3(0.3, 0.6, 0.1)
 }
 
 #[spirv(closest_hit)]
@@ -37,8 +37,9 @@ pub fn raygen(
     let d = in_uv * 2.0 - Vec2::ONE;
     let aspect_ratio = launch_size.x as f32 / launch_size.y as f32;
 
-    let origin = vec3(0.0, 0.0, -2.0);
+    let origin = vec3(0.0, 0.0, 1.0);
     let direction = vec3(d.x * aspect_ratio, -d.y, 1.0).normalize();
+    // let direction = vec3(0.0, 0.0, -1.0);
     let cull_mask = 0xff;
     let tmin = 0.001;
     let tmax = 1000.0;
@@ -61,7 +62,6 @@ pub fn raygen(
     }
 
     unsafe {
-        // output.write(uvec2(launch_id.x, launch_id.y), payload.extend(1.0));
-        output.write(uvec2(launch_id.x, launch_id.y), vec4(0.3, 0.6, 0.1, 1.0));
+        output.write(uvec2(launch_id.x, launch_id.y), payload.extend(1.0));
     }
 }

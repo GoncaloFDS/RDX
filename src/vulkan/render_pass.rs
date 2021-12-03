@@ -93,8 +93,10 @@ impl RenderPass {
             device,
         }
     }
+}
 
-    pub fn cleanup(&mut self) {
+impl Drop for RenderPass {
+    fn drop(&mut self) {
         unsafe {
             self.device.destroy_render_pass(Some(self.handle), None);
         }

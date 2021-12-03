@@ -15,17 +15,17 @@ impl Entry {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct ShaderInfo {
-    entry_size: u32,
+    stride: u32,
     offset: u32,
     size: u32,
 }
 
 impl ShaderInfo {
-    pub fn new(entry_size: u32, offset: u32, size: u32) -> Self {
+    pub fn new(stride: u32, offset: u32, size: u32) -> Self {
         ShaderInfo {
-            entry_size,
+            stride,
             offset,
             size,
         }
@@ -57,26 +57,24 @@ impl ShaderBindingTable {
         miss_groups: &[Entry],
         hit_groups: &[Entry],
     ) -> Self {
-        let raygen_entry_size = get_entry_size(raytracing_properties);
-        let miss_entry_size = get_entry_size(raytracing_properties);
-        let hit_entry_size = get_entry_size(raytracing_properties);
+        let handle_size_aligned = aligned_size(raytracing_properties);
+        let raygen_stride = handle_size_aligned;
+        let miss_stride = handle_size_aligned;
+        let hit_stride = handle_size_aligned;
 
-        let raygen_info = ShaderInfo::new(
-            raygen_entry_size,
-            0,
-            raygen_groups.len() as u32 * raygen_entry_size,
-        );
+        let raygen_info =
+            ShaderInfo::new(raygen_stride, 0, raygen_groups.len() as u32 * raygen_stride);
 
         let miss_info = ShaderInfo::new(
-            miss_entry_size,
+            miss_stride,
             raygen_info.size,
-            miss_groups.len() as u32 * miss_entry_size,
+            miss_groups.len() as u32 * miss_stride,
         );
 
         let hit_info = ShaderInfo::new(
-            hit_entry_size,
-            raygen_info.size + miss_info.entry_size,
-            hit_groups.len() as u32 * hit_entry_size,
+            hit_stride,
+            raygen_info.size + miss_info.stride,
+            hit_groups.len() as u32 * hit_stride,
         );
 
         let sbt_size = raygen_info.size + miss_info.size + hit_info.size;
@@ -92,8 +90,8 @@ impl ShaderBindingTable {
 
         let handle_size = raytracing_properties.shader_group_handle_size();
         let group_count = (raygen_groups.len() + miss_groups.len() + hit_groups.len()) as u32;
-
         let mut shader_handle_storage = vec![0u8; (handle_size * group_count) as usize];
+        let mut table_data = vec![0u8; (handle_size_aligned * group_count) as usize];
 
         unsafe {
             device
@@ -107,7 +105,15 @@ impl ShaderBindingTable {
                 .unwrap()
         };
 
-        buffer.write_data(&shader_handle_storage, 0);
+        for i in 0..group_count {
+            let a = (i * handle_size_aligned) as usize;
+            let b = (i * handle_size_aligned + handle_size) as usize;
+            let c = (i * handle_size) as usize;
+            let d = (i * handle_size + handle_size) as usize;
+            table_data[a..b].copy_from_slice(&shader_handle_storage[c..d]);
+        }
+
+        buffer.write_data(&table_data, 0);
 
         ShaderBindingTable {
             raygen_info,
@@ -129,16 +135,16 @@ impl ShaderBindingTable {
         self.buffer.get_device_address() + self.hit_info.offset as vk::DeviceAddress
     }
 
-    pub fn raygen_entry_size(&self) -> u32 {
-        self.raygen_info.entry_size
+    pub fn raygen_stride(&self) -> u32 {
+        self.raygen_info.stride
     }
 
-    pub fn miss_entry_size(&self) -> u32 {
-        self.miss_info.entry_size
+    pub fn miss_stride(&self) -> u32 {
+        self.miss_info.stride
     }
 
-    pub fn hit_entry_size(&self) -> u32 {
-        self.hit_info.entry_size
+    pub fn hit_stride(&self) -> u32 {
+        self.hit_info.stride
     }
 
     pub fn raygen_size(&self) -> u32 {
@@ -156,7 +162,7 @@ impl ShaderBindingTable {
     pub fn raygen_device_region(&self) -> vk::StridedDeviceAddressRegionKHR {
         vk::StridedDeviceAddressRegionKHRBuilder::new()
             .device_address(self.raygen_device_address())
-            .stride(self.raygen_entry_size() as _)
+            .stride(self.raygen_stride() as _)
             .size(self.raygen_size() as _)
             .build()
     }
@@ -164,7 +170,7 @@ impl ShaderBindingTable {
     pub fn miss_device_region(&self) -> vk::StridedDeviceAddressRegionKHR {
         vk::StridedDeviceAddressRegionKHRBuilder::new()
             .device_address(self.miss_device_address())
-            .stride(self.miss_entry_size() as _)
+            .stride(self.miss_stride() as _)
             .size(self.miss_size() as _)
             .build()
     }
@@ -172,7 +178,7 @@ impl ShaderBindingTable {
     pub fn hit_device_region(&self) -> vk::StridedDeviceAddressRegionKHR {
         vk::StridedDeviceAddressRegionKHRBuilder::new()
             .device_address(self.hit_device_address())
-            .stride(self.hit_entry_size() as _)
+            .stride(self.hit_stride() as _)
             .size(self.hit_size() as _)
             .build()
     }
@@ -186,7 +192,7 @@ fn round_up(size: u32, alignment: u32) -> u32 {
     ((size + alignment - 1) / alignment) * alignment
 }
 
-fn get_entry_size(properties: &RaytracingProperties) -> u32 {
+fn aligned_size(properties: &RaytracingProperties) -> u32 {
     round_up(
         properties.shader_group_handle_size(),
         properties.shader_group_base_alignment(),

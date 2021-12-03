@@ -29,8 +29,6 @@ impl Surface {
             device,
         }
     }
-
-    pub fn cleanup(&mut self) {}
 }
 
 impl Drop for Surface {
