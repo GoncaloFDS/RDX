@@ -4,11 +4,14 @@ use crevice::std430::{AsStd430, Std430};
 use erupt::vk;
 use std::mem::size_of;
 use std::rc::Rc;
+use glam::Mat4;
 
 #[derive(AsStd430)]
 pub struct UniformBufferObject {
-    pub view_model: mint::ColumnMatrix4<f32>,
-    pub projection: mint::ColumnMatrix4<f32>,
+    pub view_model: Mat4,
+    pub projection: Mat4,
+    pub view_model_inverse: Mat4,
+    pub projection_inverse: Mat4,
 }
 
 pub struct UniformBuffer {

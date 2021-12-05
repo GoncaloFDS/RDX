@@ -143,9 +143,9 @@ impl TopLevelAccelerationStructure {
             .transform(
                 vk::TransformMatrixKHRBuilder::new()
                     .matrix([
+                        transform.col(0).to_array(),
                         transform.col(1).to_array(),
                         transform.col(2).to_array(),
-                        transform.col(3).to_array(),
                     ])
                     .build(),
             )

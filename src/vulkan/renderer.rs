@@ -187,9 +187,13 @@ impl Renderer {
     pub fn update(&mut self, camera: &Camera, ui: &mut UserInterface) {
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
+        let view_model = camera.view();
+        let projection = camera.projection(aspect_ratio);
         let ubo = UniformBufferObject {
-            view_model: camera.view().into(),
-            projection: camera.projection(aspect_ratio).into(),
+            view_model,
+            projection,
+            view_model_inverse: view_model.inverse(),
+            projection_inverse: projection.inverse(),
         };
         self.uniform_buffers[self.current_frame].update_gpu_buffer(&ubo);
 
