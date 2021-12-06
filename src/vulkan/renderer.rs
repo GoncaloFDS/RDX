@@ -194,6 +194,7 @@ impl Renderer {
     }
 
     pub fn update(&mut self, camera: &Camera, ui: &mut UserInterface) {
+        puffin::profile_function!();
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
         let view_model = camera.view();
@@ -294,6 +295,7 @@ impl Renderer {
     }
 
     pub fn draw_frame(&mut self) {
+        puffin::profile_function!();
         self.fences[self.current_frame].wait(u64::MAX);
 
         match self.get_current_frame() {
@@ -548,6 +550,7 @@ impl Renderer {
     }
 
     pub fn upload_meshes(&mut self, scene: &Scene) {
+        puffin::profile_function!();
         log::debug!("upload meshes");
         let mut staging_buffers = StagingBuffers::default();
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {

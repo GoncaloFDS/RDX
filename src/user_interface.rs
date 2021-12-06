@@ -1,8 +1,8 @@
+use egui::paint::Shadow;
+use egui::Visuals;
 use egui_winit::winit::window::Window;
 use glam::Vec3;
 use std::rc::Rc;
-use egui::paint::Shadow;
-use egui::Visuals;
 use winit::event::WindowEvent;
 
 #[derive(Debug, PartialEq)]
@@ -25,36 +25,18 @@ pub struct UserInterface {
     output: egui::Output,
     clipped_meshes: Vec<egui::ClippedMesh>,
     settings: Settings,
+    display_settings: bool,
+    display_profiler: bool,
 }
 
 impl UserInterface {
-    pub fn egui(&self) -> &egui::CtxRef {
-        &self.egui
-    }
-
-    pub fn output(&self) -> &egui::Output {
-        &self.output
-    }
-
-    pub fn clipped_meshes(&self) -> &[egui::ClippedMesh] {
-        &self.clipped_meshes
-    }
-
-    pub fn settings(&self) -> &Settings {
-        &self.settings
-    }
-
-    pub fn settings_as_mut(&mut self) -> &mut Settings {
-        &mut self.settings
-    }
-
     pub fn new(window: Rc<Window>) -> Self {
         let egui = egui::CtxRef::default();
         let egui_state = egui_winit::State::new(&window);
         let mut visual = Visuals::default();
         visual.window_shadow = Shadow {
             extrusion: 0.0,
-            color: Default::default()
+            color: Default::default(),
         };
         egui.set_visuals(visual);
         UserInterface {
@@ -69,6 +51,8 @@ impl UserInterface {
                 light_position: Default::default(),
                 text: "porreiro pah".to_string(),
             },
+            display_settings: false,
+            display_profiler: false,
         }
     }
 
@@ -78,7 +62,14 @@ impl UserInterface {
 
     pub fn update(&mut self) {
         self.begin_frame();
-        self.draw_settings();
+
+        if self.display_profiler {
+            puffin_egui::profiler_window(&self.egui);
+        }
+        if self.display_settings {
+            self.draw_settings();
+        }
+
         self.end_frame();
     }
 
@@ -142,5 +133,35 @@ impl UserInterface {
                 ui.separator();
                 ui.text_edit_singleline(&mut self.settings.text);
             });
+    }
+}
+
+impl UserInterface {
+    pub fn egui(&self) -> &egui::CtxRef {
+        &self.egui
+    }
+
+    pub fn output(&self) -> &egui::Output {
+        &self.output
+    }
+
+    pub fn clipped_meshes(&self) -> &[egui::ClippedMesh] {
+        &self.clipped_meshes
+    }
+
+    pub fn settings(&self) -> &Settings {
+        &self.settings
+    }
+
+    pub fn settings_as_mut(&mut self) -> &mut Settings {
+        &mut self.settings
+    }
+
+    pub fn toggle_settings(&mut self) {
+        self.display_settings = !self.display_settings;
+    }
+
+    pub fn toggle_profiler(&mut self) {
+        self.display_profiler = !self.display_profiler;
     }
 }

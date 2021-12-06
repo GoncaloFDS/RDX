@@ -6,6 +6,7 @@ use crate::vulkan::renderer::Renderer;
 use crate::vulkan::scene::Scene;
 use egui_winit::winit::event::Event;
 use egui_winit::winit::event_loop::ControlFlow;
+use egui_winit::State;
 use glam::{vec3, Vec3};
 use std::rc::Rc;
 use winit::dpi::{LogicalSize, PhysicalPosition};
@@ -25,6 +26,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(width: u32, height: u32, name: &str) -> (Engine, EventLoop<()>) {
+        puffin::set_scopes_on(true);
         let (window, event_loop) = Self::new_window(width, height, name);
         let window = Rc::new(window);
 
@@ -90,6 +92,14 @@ impl Engine {
                         if input.virtual_keycode == Some(VirtualKeyCode::Escape) {
                             self.shutdown();
                             *control_flow = ControlFlow::Exit
+                        } else if input.virtual_keycode == Some(VirtualKeyCode::F1)
+                            && input.state == ElementState::Pressed
+                        {
+                            self.ui.toggle_settings();
+                        } else if input.virtual_keycode == Some(VirtualKeyCode::F2)
+                            && input.state == ElementState::Pressed
+                        {
+                            self.ui.toggle_profiler();
                         } else {
                             self.handle_key_input(input)
                         }
@@ -115,6 +125,8 @@ impl Engine {
     }
 
     pub fn run(&mut self) {
+        puffin::GlobalProfiler::lock().new_frame();
+        puffin::profile_function!();
         self.camera.update_camera(self.time.delta_time());
         self.renderer.update(&self.camera, &mut self.ui);
         self.renderer.draw_frame();
