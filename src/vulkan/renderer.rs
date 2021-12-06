@@ -11,7 +11,7 @@ use crate::vulkan::framebuffer::Framebuffer;
 use crate::vulkan::graphics_pipeline::{GraphicsPipeline, PushConstants};
 use crate::vulkan::image::Image;
 use crate::vulkan::image_view::ImageView;
-use crate::vulkan::model::DrawIndexed;
+use crate::vulkan::model::{Model, StagingBuffers};
 use crate::vulkan::raytracing::acceleration_structure::{
     get_total_memory_requirements, AccelerationStrutcture,
 };
@@ -30,7 +30,7 @@ use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::EguiVertex;
 use erupt::vk;
-use glam::{vec2, vec3, vec4, Mat4};
+use glam::{vec2, vec4, Mat4};
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::rc::Rc;
@@ -42,6 +42,13 @@ const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
 
 const FONT_IMAGE_ID: u32 = 10;
+
+pub struct DrawIndexed {
+    pub vertex_offset: u64,
+    pub index_offset: u64,
+    pub index_count: u32,
+    pub id: usize,
+}
 
 pub struct Renderer {
     device: Rc<Device>,
@@ -79,6 +86,7 @@ pub struct Renderer {
     tlas_scratch_buffer: Buffer,
     instances_buffer: Buffer,
     shader_binding_table: ShaderBindingTable,
+    models: Vec<Model>,
 }
 
 impl Renderer {
@@ -144,6 +152,7 @@ impl Renderer {
             tlas_scratch_buffer,
             instances_buffer,
             shader_binding_table,
+            models: vec![],
         }
     }
 
@@ -232,7 +241,7 @@ impl Renderer {
                 })
                 .collect::<Vec<_>>();
 
-            let id = 1;
+            let id = 0;
 
             self.vertex_buffers[id].write_data(&vertices, vertex_start);
             self.index_buffers[id].write_data(&mesh.indices, index_start);
@@ -539,40 +548,17 @@ impl Renderer {
     }
 
     pub fn upload_meshes(&mut self, scene: &Scene) {
-        let mut vertices = vec![];
-        let mut indices = vec![];
-        for model in scene.models() {
-            vertices.extend_from_slice(model.vertices());
-            indices.extend_from_slice(model.indices());
-        }
-
-        let vertex_buffer = Buffer::with_data(
-            self.device.clone(),
-            &vertices,
-            vk::BufferUsageFlags::VERTEX_BUFFER
-                | vk::BufferUsageFlags::STORAGE_BUFFER
-                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-        );
-
-        let index_buffer = Buffer::with_data(
-            self.device.clone(),
-            &indices,
-            vk::BufferUsageFlags::INDEX_BUFFER
-                | vk::BufferUsageFlags::STORAGE_BUFFER
-                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-        );
-
-        let material_buffer = Buffer::with_data(
-            self.device.clone(),
-            &[vec3(0.1, 0.5, 0.5)],
-            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        );
-
-        self.vertex_buffers.push(vertex_buffer);
-        self.index_buffers.push(index_buffer);
-        self.material_buffers.push(material_buffer);
+        log::debug!("upload meshes");
+        let mut staging_buffers = StagingBuffers::default();
+        CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
+            let (model, staging) = Model::create_from_file(
+                self.device.clone(),
+                command_buffer,
+                "resources/models/FlightHelmet/FlightHelmet.gltf",
+            );
+            staging_buffers = staging;
+            self.models.push(model);
+        });
     }
 
     fn create_default_render_pass(&mut self) {
@@ -652,8 +638,14 @@ impl Renderer {
             &self.accumulation_image_view,
             &self.output_image_view,
             &self.uniform_buffers,
-            &self.vertex_buffers[0],
-            &self.index_buffers[0],
+            &self.models[0].mesh(0).primitives()[0]
+                .vertex_buffer()
+                .buffer(),
+            &self.models[0].mesh(0).primitives()[0]
+                .index_buffer()
+                .as_ref()
+                .unwrap()
+                .buffer(),
         )
     }
 
@@ -686,8 +678,7 @@ impl Renderer {
                 &mut self.blas,
                 &mut self.blas_buffer,
                 &mut self.blas_scratch_buffer,
-                &self.vertex_buffers,
-                &self.index_buffers,
+                &self.models,
                 &self.raytracing_properties,
             );
             Renderer::create_blas(
@@ -720,25 +711,28 @@ impl Renderer {
         blas: &mut Vec<BottomLevelAccelerationStructure>,
         blas_buffer: &mut Buffer,
         blas_scratch_buffer: &mut Buffer,
-        vertex_buffers: &[Buffer],
-        index_buffers: &[Buffer],
+        models: &[Model],
         raytracing_properties: &RaytracingProperties,
     ) {
-        let mut geometries = BottomLevelGeometry::default();
         blas.clear();
 
-        //for each mesh
-        {
-            geometries.add_geometry_triangles(
-                &vertex_buffers[0],
-                &index_buffers[0],
-                0,
-                3,
-                0,
-                3,
-                true,
-            );
-
+        for model in models {
+            let mut geometries = BottomLevelGeometry::default();
+            for mesh in model.meshes() {
+                for primitive in mesh.primitives() {
+                    let vertex_buffer = primitive.vertex_buffer();
+                    let index_buffer = primitive.index_buffer().as_ref().unwrap();
+                    geometries.add_geometry_triangles(
+                        vertex_buffer.buffer(),
+                        index_buffer.buffer(),
+                        vertex_buffer.offset() as u32,
+                        vertex_buffer.element_count(),
+                        index_buffer.offset() as u32,
+                        index_buffer.element_count(),
+                        true,
+                    );
+                }
+            }
             blas.push(BottomLevelAccelerationStructure::new(
                 device.clone(),
                 *raytracing_properties,
@@ -797,13 +791,12 @@ impl Renderer {
         blas: &[BottomLevelAccelerationStructure],
         raytracing_properties: &RaytracingProperties,
     ) {
-        let instances = vec![TopLevelAccelerationStructure::create_instance(
-            &device,
-            &blas[0],
-            Mat4::IDENTITY,
-            0,
-            0,
-        )];
+        let instances = blas
+            .iter()
+            .map(|blas| {
+                TopLevelAccelerationStructure::create_instance(&device, &blas, Mat4::IDENTITY, 0, 0)
+            })
+            .collect::<Vec<_>>();
 
         *instances_buffer = Buffer::with_data(
             device.clone(),

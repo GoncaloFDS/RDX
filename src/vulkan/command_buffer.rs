@@ -2,6 +2,8 @@ use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
 use bytemuck::{cast_slice, Pod};
 use erupt::vk;
+use std::mem::size_of_val;
+use std::rc::Rc;
 
 #[derive(Copy, Clone)]
 pub struct CommandBuffer {
@@ -279,5 +281,48 @@ impl CommandBuffer {
                 &[copy_region],
             );
         }
+    }
+
+    pub fn copy_buffer(
+        &self,
+        device: &Device,
+        src_buffer: &Buffer,
+        dst_buffer: &Buffer,
+        size: vk::DeviceSize,
+    ) {
+        let region = vk::BufferCopyBuilder::new()
+            .size(size)
+            .src_offset(0)
+            .dst_offset(0);
+
+        unsafe {
+            device.cmd_copy_buffer(
+                self.handle,
+                src_buffer.handle(),
+                dst_buffer.handle(),
+                &[region],
+            );
+        }
+    }
+
+    pub fn create_device_local_buffer_with_data<T: Copy>(
+        &self,
+        device: Rc<Device>,
+        usage: vk::BufferUsageFlags,
+        data: &[T],
+    ) -> (Buffer, Buffer) {
+        let size = size_of_val(data) as u64;
+        let staging_buffer =
+            Buffer::with_data(device.clone(), data, vk::BufferUsageFlags::TRANSFER_SRC);
+        let mut buffer = Buffer::new(
+            device.clone(),
+            size,
+            vk::BufferUsageFlags::TRANSFER_DST | usage,
+        );
+        buffer.allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
+
+        self.copy_buffer(&device, &staging_buffer, &buffer, size);
+
+        (buffer, staging_buffer)
     }
 }

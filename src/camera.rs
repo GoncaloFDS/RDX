@@ -61,7 +61,7 @@ impl Camera {
             moving_down: false,
             mouse_left_pressed: false,
             look_speed: 10.0,
-            move_speed: 4.0,
+            move_speed: 10.0,
         }
     }
 

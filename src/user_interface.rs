@@ -1,6 +1,8 @@
 use egui_winit::winit::window::Window;
 use glam::Vec3;
 use std::rc::Rc;
+use egui::paint::Shadow;
+use egui::Visuals;
 use winit::event::WindowEvent;
 
 #[derive(Debug, PartialEq)]
@@ -49,6 +51,12 @@ impl UserInterface {
     pub fn new(window: Rc<Window>) -> Self {
         let egui = egui::CtxRef::default();
         let egui_state = egui_winit::State::new(&window);
+        let mut visual = Visuals::default();
+        visual.window_shadow = Shadow {
+            extrusion: 0.0,
+            color: Default::default()
+        };
+        egui.set_visuals(visual);
         UserInterface {
             egui,
             egui_state,

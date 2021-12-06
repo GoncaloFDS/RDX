@@ -6,7 +6,7 @@ use crate::vulkan::render_pass::RenderPass;
 use crate::vulkan::shader_module::ShaderModule;
 use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::uniform_buffer::UniformBuffer;
-use crate::vulkan::vertex::{EguiVertex, Vertex};
+use crate::vulkan::vertex::{EguiVertex, ModelVertex, Vertex};
 use bytemuck::{Pod, Zeroable};
 use erupt::vk;
 use glam::Vec2;
@@ -54,8 +54,8 @@ impl GraphicsPipeline {
         uniform_buffers: &[UniformBuffer],
         is_wireframe: bool,
     ) -> Self {
-        let binding_descriptions = Vertex::binding_descriptions();
-        let attribute_descriptions = Vertex::attribute_descriptions();
+        let binding_descriptions = ModelVertex::binding_descriptions();
+        let attribute_descriptions = ModelVertex::attribute_descriptions();
         let vertex_input_info = vk::PipelineVertexInputStateCreateInfoBuilder::new()
             .vertex_binding_descriptions(&binding_descriptions)
             .vertex_attribute_descriptions(&attribute_descriptions);

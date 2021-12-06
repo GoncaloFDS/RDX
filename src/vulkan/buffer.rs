@@ -87,6 +87,7 @@ impl Buffer {
 impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
+            log::debug!("Dropping Buffer");
             self.device.destroy_buffer(Some(self.handle), None);
         }
     }

@@ -1,60 +1,44 @@
+use crate::vulkan::buffer::Buffer;
 use bytemuck::{Pod, Zeroable};
 use erupt::vk;
 use glam::{Vec2, Vec3, Vec4};
 use memoffset::offset_of;
 use std::mem::size_of;
+use std::sync::Arc;
 
-#[derive(Copy, Clone, Debug)]
-pub struct Vertex {
-    pub position: Vec3,
-    // pub normal: Vec3,
-    // pub tex_coords: Vec2,
-    // pub material_index: i32,
+pub trait Vertex {
+    fn binding_descriptions() -> Vec<vk::VertexInputBindingDescriptionBuilder<'static>>;
+    fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescriptionBuilder<'static>>;
 }
 
-unsafe impl Zeroable for Vertex {}
-unsafe impl Pod for Vertex {}
+#[derive(Copy, Clone, Debug)]
+pub struct ModelVertex {
+    position: Vec3,
+}
 
-impl Vertex {
-    pub fn new(position: Vec3, normal: Vec3, tex_coords: Vec2, material_index: i32) -> Self {
-        Vertex {
-            position,
-            // normal,
-            // tex_coords,
-            // material_index,
-        }
+unsafe impl Zeroable for ModelVertex {}
+unsafe impl Pod for ModelVertex {}
+
+impl ModelVertex {
+    pub fn new(position: Vec3) -> Self {
+        ModelVertex { position }
     }
+}
 
-    pub fn binding_descriptions() -> [vk::VertexInputBindingDescriptionBuilder<'static>; 1] {
-        [vk::VertexInputBindingDescriptionBuilder::new()
+impl Vertex for ModelVertex {
+    fn binding_descriptions() -> Vec<vk::VertexInputBindingDescriptionBuilder<'static>> {
+        vec![vk::VertexInputBindingDescriptionBuilder::new()
             .binding(0)
             .stride(size_of::<Self>() as u32)
             .input_rate(vk::VertexInputRate::VERTEX)]
     }
 
-    pub fn attribute_descriptions() -> [vk::VertexInputAttributeDescriptionBuilder<'static>; 1] {
-        [
-            vk::VertexInputAttributeDescriptionBuilder::new()
-                .binding(0)
-                .location(0)
-                .format(vk::Format::R32G32B32_SFLOAT)
-                .offset(offset_of!(Self, position) as u32),
-            // vk::VertexInputAttributeDescriptionBuilder::new()
-            //     .binding(0)
-            //     .location(1)
-            //     .format(vk::Format::R32G32B32_SFLOAT)
-            //     .offset(offset_of!(Self, normal) as u32),
-            // vk::VertexInputAttributeDescriptionBuilder::new()
-            //     .binding(0)
-            //     .location(2)
-            //     .format(vk::Format::R32G32_SFLOAT)
-            //     .offset(offset_of!(Self, tex_coords) as u32),
-            // vk::VertexInputAttributeDescriptionBuilder::new()
-            //     .binding(0)
-            //     .location(3)
-            //     .format(vk::Format::R32_SINT)
-            //     .offset(offset_of!(Self, material_index) as u32),
-        ]
+    fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescriptionBuilder<'static>> {
+        vec![vk::VertexInputAttributeDescriptionBuilder::new()
+            .binding(0)
+            .location(0)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(offset_of!(Self, position) as u32)]
     }
 }
 
@@ -66,6 +50,7 @@ pub struct EguiVertex {
 }
 
 unsafe impl Zeroable for EguiVertex {}
+
 unsafe impl Pod for EguiVertex {}
 
 impl EguiVertex {
@@ -76,16 +61,18 @@ impl EguiVertex {
             color,
         }
     }
+}
 
-    pub fn binding_descriptions() -> [vk::VertexInputBindingDescriptionBuilder<'static>; 1] {
-        [vk::VertexInputBindingDescriptionBuilder::new()
+impl Vertex for EguiVertex {
+    fn binding_descriptions() -> Vec<vk::VertexInputBindingDescriptionBuilder<'static>> {
+        vec![vk::VertexInputBindingDescriptionBuilder::new()
             .binding(0)
             .stride(size_of::<Self>() as u32)
             .input_rate(vk::VertexInputRate::VERTEX)]
     }
 
-    pub fn attribute_descriptions() -> [vk::VertexInputAttributeDescriptionBuilder<'static>; 3] {
-        [
+    fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescriptionBuilder<'static>> {
+        vec![
             vk::VertexInputAttributeDescriptionBuilder::new()
                 .binding(0)
                 .location(0)
@@ -102,5 +89,61 @@ impl EguiVertex {
                 .format(vk::Format::R32G32B32A32_SFLOAT)
                 .offset(offset_of!(Self, color) as u32),
         ]
+    }
+}
+
+pub struct VertexBuffer {
+    buffer: Arc<Buffer>,
+    offset: u64,
+    element_count: u32,
+}
+
+impl VertexBuffer {
+    pub fn new(buffer: Arc<Buffer>, offset: u64, element_count: u32) -> Self {
+        VertexBuffer {
+            buffer,
+            offset,
+            element_count,
+        }
+    }
+}
+
+impl VertexBuffer {
+    pub fn buffer(&self) -> &Buffer {
+        &self.buffer
+    }
+    pub fn offset(&self) -> u64 {
+        self.offset
+    }
+    pub fn element_count(&self) -> u32 {
+        self.element_count
+    }
+}
+
+pub struct IndexBuffer {
+    buffer: Arc<Buffer>,
+    offset: u64,
+    element_count: u32,
+}
+
+impl IndexBuffer {
+    pub fn new(buffer: Arc<Buffer>, offset: u64, element_count: u32) -> Self {
+        IndexBuffer {
+            buffer,
+            offset,
+            element_count,
+        }
+    }
+}
+
+impl IndexBuffer {
+    pub fn buffer(&self) -> &Buffer {
+        &self.buffer
+    }
+    pub fn offset(&self) -> u64 {
+        self.offset
+    }
+    pub fn element_count(&self) -> u32 {
+        self.element_count
     }
 }

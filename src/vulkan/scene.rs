@@ -15,7 +15,7 @@ impl Scene {
     }
 
     pub fn new() -> Self {
-        let models = vec![Model::triangle()];
+        let models = vec![];
         Scene {
             models,
             textures: vec![],

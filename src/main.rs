@@ -8,8 +8,8 @@ mod time;
 mod user_interface;
 mod vulkan;
 
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 600;
+const WIDTH: u32 = 1400;
+const HEIGHT: u32 = 900;
 const WINDOW_NAME: &str = "Rdx - Vulkan";
 
 fn main() {
