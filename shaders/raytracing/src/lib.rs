@@ -19,14 +19,23 @@ pub struct UniformBufferObject {
     pub projection_inverse: Mat4,
 }
 
+pub struct Material {
+    pub color: Vec4,
+}
+
 #[spirv(miss)]
 pub fn miss(#[spirv(incoming_ray_payload)] out: &mut Vec3) {
     *out = vec3(0.3, 0.6, 0.1)
 }
 
 #[spirv(closest_hit)]
-pub fn closest_hit(#[spirv(incoming_ray_payload)] out: &mut Vec3, #[spirv(instance_id)] id: u32) {
-    *out = vec3(0.9, 0.5, 0.5)
+pub fn closest_hit(
+    #[spirv(incoming_ray_payload)] out: &mut Vec3,
+    #[spirv(instance_id)] id: u32,
+    #[spirv(instance_custom_index)] index: u32,
+    #[spirv(descriptor_set = 0, binding = 6, storage_buffer)] materials: &[Material],
+) {
+    *out = materials[index as usize].color.truncate();
 }
 
 #[spirv(ray_generation)]

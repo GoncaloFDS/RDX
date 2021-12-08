@@ -13,23 +13,32 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 pub struct Instance {
+    id: u32,
     blas_id: u32,
     transform: Mat4,
 }
 
 impl Instance {
+    pub fn new(id: u32, blas_id: u32, transform: Mat4) -> Self {
+        Instance {
+            id,
+            blas_id,
+            transform,
+        }
+    }
+}
+
+impl Instance {
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
     pub fn blas_id(&self) -> u32 {
         self.blas_id
     }
 
     pub fn transform(&self) -> Mat4 {
         self.transform
-    }
-}
-
-impl Instance {
-    pub fn new(blas_id: u32, transform: Mat4) -> Self {
-        Instance { blas_id, transform }
     }
 }
 

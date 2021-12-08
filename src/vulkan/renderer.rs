@@ -66,7 +66,7 @@ pub struct Renderer {
     fences: Vec<Fence>,
     vertex_buffers: Vec<Buffer>,
     index_buffers: Vec<Buffer>,
-    material_buffers: Vec<Buffer>,
+    material_buffer: Buffer,
     uniform_buffers: Vec<UniformBuffer>,
     current_frame: usize,
     textures: HashMap<u32, Texture>,
@@ -116,6 +116,7 @@ impl Renderer {
         let shader_binding_table = ShaderBindingTable::uninitialized(device.clone());
         let static_vertex_buffer = Buffer::uninitialized(device.clone());
         let static_index_buffer = Buffer::uninitialized(device.clone());
+        let material_buffer = Buffer::uninitialized(device.clone());
 
         let raytracing_properties = RaytracingProperties::new(&device);
 
@@ -135,7 +136,7 @@ impl Renderer {
             fences: vec![],
             vertex_buffers: vec![],
             index_buffers: vec![],
-            material_buffers: vec![],
+            material_buffer,
             uniform_buffers: vec![],
             current_frame: 0,
             textures: Default::default(),
@@ -229,6 +230,7 @@ impl Renderer {
         let uniform_buffers = &self.uniform_buffers;
         let vertex_buffer = &self.static_vertex_buffer;
         let index_buffer = &self.static_index_buffer;
+        let material_buffer = &self.material_buffer;
         let descriptor_set_manager = self.raytracing_pipeline.descriptor_set_manager();
         self.swapchain
             .images()
@@ -259,9 +261,9 @@ impl Renderer {
                     .buffer(index_buffer.handle())
                     .range(vk::WHOLE_SIZE)];
 
-                // let material_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-                //     .buffer(material_buffer.handle())
-                //     .range(vk::WHOLE_SIZE)];
+                let material_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+                    .buffer(material_buffer.handle())
+                    .range(vk::WHOLE_SIZE)];
 
                 // let image_infos: Vec<_> = texture_image_views
                 //     .iter()
@@ -281,7 +283,7 @@ impl Renderer {
                     descriptor_set_manager.bind_buffer(i as u32, 3, &uniform_buffer_info),
                     descriptor_set_manager.bind_buffer(i as u32, 4, &vertex_buffer_info),
                     descriptor_set_manager.bind_buffer(i as u32, 5, &index_buffer_info),
-                    // descriptor_set_manager.bind_buffer(i as u32, 6, &material_buffer_info),
+                    descriptor_set_manager.bind_buffer(i as u32, 6, &material_buffer_info),
                     // descriptor_set_manager.bind_image(i as u32, 7, &image_infos),
                 ];
 
@@ -629,6 +631,16 @@ impl Renderer {
 
         let mut staging_buffers = vec![];
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
+            let (material_buffer, staging_material_buffer) = command_buffer
+                .create_device_local_buffer_with_data::<_>(
+                    self.device.clone(),
+                    vk::BufferUsageFlags::STORAGE_BUFFER
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    &scene.materials(),
+                );
+            self.material_buffer = material_buffer;
+            staging_buffers.push(staging_material_buffer);
+
             for model in scene.models() {
                 for mesh in model.meshes() {
                     log::debug!("mesh");
@@ -893,13 +905,12 @@ impl Renderer {
     ) {
         let instances = instances
             .iter()
-            .enumerate()
-            .map(|(id, instance)| {
+            .map(|instance| {
                 TopLevelAccelerationStructure::create_instance(
                     &device,
                     &blas[instance.blas_id() as usize],
                     instance.transform(),
-                    id as _,
+                    instance.id(),
                     0,
                 )
             })
