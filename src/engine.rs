@@ -44,7 +44,7 @@ impl Engine {
             window,
             renderer,
             scene,
-            camera: Camera::new(vec3(0.0, 0.0, 1.0), Vec3::ZERO),
+            camera: Camera::new(vec3(0.0, 2.0, 5.0), Vec3::ZERO),
             input: Default::default(),
             ui,
         };

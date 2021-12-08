@@ -43,7 +43,7 @@ impl Camera {
         let up = inverse_view * Vec4::Y;
         let forward = inverse_view * -Vec4::Z;
 
-        let (yaw, pitch, _) = orientation.to_euler(EulerRot::XYZ);
+        let (pitch, yaw, _) = orientation.to_euler(EulerRot::XYZ);
 
         Camera {
             position,
