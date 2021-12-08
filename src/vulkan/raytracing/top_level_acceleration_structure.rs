@@ -83,6 +83,7 @@ impl TopLevelAccelerationStructure {
         scratch_offset: u64,
         result_buffer: &Buffer,
         result_offset: u64,
+        old_tlas: Option<vk::AccelerationStructureKHR>,
     ) {
         let geometries = [self.top_as_geometry];
         let mut build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
@@ -90,7 +91,7 @@ impl TopLevelAccelerationStructure {
             .geometries(&geometries)
             .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
             ._type(vk::AccelerationStructureTypeKHR::TOP_LEVEL_KHR)
-            .src_acceleration_structure(vk::AccelerationStructureKHR::null());
+            .src_acceleration_structure(old_tlas.unwrap_or(vk::AccelerationStructureKHR::null()));
 
         let create_info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
             ._type(build_geometry_info._type)
@@ -134,29 +135,23 @@ impl TopLevelAccelerationStructure {
         let as_address =
             unsafe { device.get_acceleration_structure_device_address_khr(&address_info) };
 
-        vk::AccelerationStructureInstanceKHRBuilder::new()
+        *vk::AccelerationStructureInstanceKHRBuilder::new()
             .instance_custom_index(instance_id)
             .mask(0xFF)
             .instance_shader_binding_table_record_offset(hit_group_id)
             .flags(vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR)
             .acceleration_structure_reference(as_address)
-            .transform(
-                vk::TransformMatrixKHRBuilder::new()
-                    .matrix([
-                        transform.col(0).to_array(),
-                        transform.col(1).to_array(),
-                        transform.col(2).to_array(),
-                    ])
-                    .build(),
-            )
-            .build()
+            .transform(*vk::TransformMatrixKHRBuilder::new().matrix([
+                transform.row(0).to_array(),
+                transform.row(1).to_array(),
+                transform.row(2).to_array(),
+            ]))
     }
 }
 
 impl Drop for TopLevelAccelerationStructure {
     fn drop(&mut self) {
         unsafe {
-            log::debug!("Dropping tlas");
             self.device
                 .destroy_acceleration_structure_khr(Some(self.handle()), None);
         }

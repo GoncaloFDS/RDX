@@ -133,8 +133,11 @@ impl GraphicsPipeline {
             // ),
         ];
 
-        let descriptor_set_manager =
-            DescriptorSetManager::new(device.clone(), &descriptor_bindings, uniform_buffers.len());
+        let descriptor_set_manager = DescriptorSetManager::new(
+            device.clone(),
+            &descriptor_bindings,
+            uniform_buffers.len() as u32,
+        );
 
         swapchain.images().iter().enumerate().for_each(|(i, _)| {
             let uniform_buffer_info = [vk::DescriptorBufferInfoBuilder::new()

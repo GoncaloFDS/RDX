@@ -25,7 +25,7 @@ impl DescriptorSetManager {
     pub fn new(
         device: Rc<Device>,
         descriptor_bindings: &[DescriptorBinding],
-        max_sets: usize,
+        max_sets: u32,
     ) -> Self {
         let descriptor_set_layout = DescriptorSetLayout::new(device.clone(), descriptor_bindings);
 
@@ -34,7 +34,7 @@ impl DescriptorSetManager {
             .map(|binding| {
                 vk::DescriptorPoolSizeBuilder::new()
                     ._type(binding.descriptor_type)
-                    .descriptor_count(binding.descriptor_count * max_sets as u32)
+                    .descriptor_count(binding.descriptor_count * max_sets)
             })
             .collect::<Vec<_>>();
 

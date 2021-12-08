@@ -2,9 +2,9 @@ use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
 use crevice::std430::{AsStd430, Std430};
 use erupt::vk;
+use glam::Mat4;
 use std::mem::size_of;
 use std::rc::Rc;
-use glam::Mat4;
 
 #[derive(AsStd430)]
 pub struct UniformBufferObject {
@@ -36,6 +36,7 @@ impl UniformBuffer {
     }
 
     pub fn update_gpu_buffer(&mut self, ubo: &UniformBufferObject) {
+        puffin::profile_function!();
         self.buffer.write_data(ubo.as_std430().as_bytes(), 0);
     }
 }

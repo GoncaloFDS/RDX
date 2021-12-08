@@ -61,6 +61,7 @@ impl UserInterface {
     }
 
     pub fn update(&mut self) {
+        puffin::profile_function!();
         self.begin_frame();
 
         if self.display_profiler {

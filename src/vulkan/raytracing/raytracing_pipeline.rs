@@ -60,16 +60,7 @@ impl RaytracingPipeline {
         }
     }
 
-    pub fn new(
-        device: Rc<Device>,
-        swapchain: &Swapchain,
-        tlas: &TopLevelAccelerationStructure,
-        accumulation_view: &ImageView,
-        output_view: &ImageView,
-        uniform_buffers: &[UniformBuffer],
-        vertex_buffer: &Buffer,
-        index_buffer: &Buffer,
-    ) -> Self {
+    pub fn new(device: Rc<Device>, descriptor_set_count: u32) -> Self {
         let descriptor_bindings = [
             // TAS
             DescriptorBinding::new(
@@ -133,63 +124,7 @@ impl RaytracingPipeline {
         ];
 
         let descriptor_set_manager =
-            DescriptorSetManager::new(device.clone(), &descriptor_bindings, uniform_buffers.len());
-
-        // extract this
-        swapchain.images().iter().enumerate().for_each(|(i, _)| {
-            let tlas_handle = [tlas.handle()];
-            let tlas_info = vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
-                .acceleration_structures(&tlas_handle);
-
-            let accumulation_image_info = [vk::DescriptorImageInfoBuilder::new()
-                .image_view(accumulation_view.handle())
-                .image_layout(vk::ImageLayout::GENERAL)];
-
-            let output_image_info = [vk::DescriptorImageInfoBuilder::new()
-                .image_view(output_view.handle())
-                .image_layout(vk::ImageLayout::GENERAL)];
-
-            let uniform_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-                .buffer(uniform_buffers[i].buffer().handle())
-                .range(vk::WHOLE_SIZE)];
-
-            let vertex_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-                .buffer(vertex_buffer.handle())
-                .range(vk::WHOLE_SIZE)];
-
-            let index_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-                .buffer(index_buffer.handle())
-                .range(vk::WHOLE_SIZE)];
-
-            // let material_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-            //     .buffer(material_buffer.handle())
-            //     .range(vk::WHOLE_SIZE)];
-
-            // let image_infos: Vec<_> = texture_image_views
-            //     .iter()
-            //     .zip(texture_samplers)
-            //     .map(|(image_view, sampler)| {
-            //         vk::DescriptorImageInfoBuilder::new()
-            //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            //             .image_view(*image_view)
-            //             .sampler(*sampler)
-            //     })
-            //     .collect();
-
-            let descriptor_writes = [
-                descriptor_set_manager.bind_acceleration_structure(i as u32, 0, &tlas_info),
-                descriptor_set_manager.bind_image(i as u32, 1, &accumulation_image_info),
-                descriptor_set_manager.bind_image(i as u32, 2, &output_image_info),
-                descriptor_set_manager.bind_buffer(i as u32, 3, &uniform_buffer_info),
-                descriptor_set_manager.bind_buffer(i as u32, 4, &vertex_buffer_info),
-                descriptor_set_manager.bind_buffer(i as u32, 5, &index_buffer_info),
-                // descriptor_set_manager.bind_buffer(i as u32, 6, &material_buffer_info),
-                // descriptor_set_manager.bind_image(i as u32, 7, &image_infos),
-            ];
-
-            descriptor_set_manager.update_descriptors(&descriptor_writes);
-        });
-        // extract this
+            DescriptorSetManager::new(device.clone(), &descriptor_bindings, descriptor_set_count);
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),

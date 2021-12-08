@@ -11,7 +11,7 @@ use crate::vulkan::framebuffer::Framebuffer;
 use crate::vulkan::graphics_pipeline::{GraphicsPipeline, PushConstants};
 use crate::vulkan::image::Image;
 use crate::vulkan::image_view::ImageView;
-use crate::vulkan::model::Model;
+use crate::vulkan::model::{Instance, Model};
 use crate::vulkan::raytracing::acceleration_structure::{
     get_total_memory_requirements, AccelerationStrutcture,
 };
@@ -30,7 +30,7 @@ use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::EguiVertex;
 use erupt::vk;
-use glam::{vec2, vec4, Mat4};
+use glam::{vec2, vec3, vec4, Mat4};
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::rc::Rc;
@@ -160,13 +160,12 @@ impl Renderer {
         }
     }
 
-    fn stuff(&mut self, window: &Window) {
+    fn create(&mut self, window: &Window) {
         self.create_swapchain(window);
         self.create_depth_buffer(window);
         self.create_default_render_pass();
         self.create_uniform_buffers();
         self.create_ouput_images();
-        self.create_acceleration_structures();
         self.create_pipelines();
         self.create_shader_binding_table();
         self.create_framebuffers();
@@ -175,11 +174,11 @@ impl Renderer {
     }
 
     pub fn setup(&mut self, window: &Window) {
-        self.stuff(window);
+        self.create(window);
         self.allocate_ui_buffers();
     }
 
-    fn delete_swapchain(&mut self) {
+    fn reset(&mut self) {
         self.command_pool.reset();
         self.swapchain = Swapchain::uninitialized(self.device.clone());
         self.uniform_buffers.clear();
@@ -191,13 +190,13 @@ impl Renderer {
         self.current_frame = 0;
     }
 
-    pub fn recreate_swapchain(&mut self, window: &Window) {
+    pub fn recreate(&mut self, window: &Window) {
         self.device.wait_idle();
-        self.delete_swapchain();
-        self.stuff(window);
+        self.reset();
+        self.create(window);
     }
 
-    pub fn update(&mut self, camera: &Camera, ui: &mut UserInterface) {
+    pub fn update(&mut self, camera: &Camera, scene: &Scene, ui: &mut UserInterface) {
         puffin::profile_function!();
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
@@ -218,9 +217,80 @@ impl Renderer {
         if texture.version != self.egui_texture_version {
             self.update_font_texture(texture);
         }
+
+        self.update_acceleration_structures(scene);
+        self.update_descriptor_sets();
+    }
+
+    fn update_descriptor_sets(&mut self) {
+        let tlas = &self.tlas[0];
+        let accumulation_view = &self.accumulation_image_view;
+        let output_view = &self.output_image_view;
+        let uniform_buffers = &self.uniform_buffers;
+        let vertex_buffer = &self.static_vertex_buffer;
+        let index_buffer = &self.static_index_buffer;
+        let descriptor_set_manager = self.raytracing_pipeline.descriptor_set_manager();
+        self.swapchain
+            .images()
+            .iter()
+            .enumerate()
+            .for_each(|(i, _)| {
+                let tlas_handle = [tlas.handle()];
+                let tlas_info = vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
+                    .acceleration_structures(&tlas_handle);
+
+                let accumulation_image_info = [vk::DescriptorImageInfoBuilder::new()
+                    .image_view(accumulation_view.handle())
+                    .image_layout(vk::ImageLayout::GENERAL)];
+
+                let output_image_info = [vk::DescriptorImageInfoBuilder::new()
+                    .image_view(output_view.handle())
+                    .image_layout(vk::ImageLayout::GENERAL)];
+
+                let uniform_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+                    .buffer(uniform_buffers[i].buffer().handle())
+                    .range(vk::WHOLE_SIZE)];
+
+                let vertex_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+                    .buffer(vertex_buffer.handle())
+                    .range(vk::WHOLE_SIZE)];
+
+                let index_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+                    .buffer(index_buffer.handle())
+                    .range(vk::WHOLE_SIZE)];
+
+                // let material_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+                //     .buffer(material_buffer.handle())
+                //     .range(vk::WHOLE_SIZE)];
+
+                // let image_infos: Vec<_> = texture_image_views
+                //     .iter()
+                //     .zip(texture_samplers)
+                //     .map(|(image_view, sampler)| {
+                //         vk::DescriptorImageInfoBuilder::new()
+                //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                //             .image_view(*image_view)
+                //             .sampler(*sampler)
+                //     })
+                //     .collect();
+
+                let descriptor_writes = [
+                    descriptor_set_manager.bind_acceleration_structure(i as u32, 0, &tlas_info),
+                    descriptor_set_manager.bind_image(i as u32, 1, &accumulation_image_info),
+                    descriptor_set_manager.bind_image(i as u32, 2, &output_image_info),
+                    descriptor_set_manager.bind_buffer(i as u32, 3, &uniform_buffer_info),
+                    descriptor_set_manager.bind_buffer(i as u32, 4, &vertex_buffer_info),
+                    descriptor_set_manager.bind_buffer(i as u32, 5, &index_buffer_info),
+                    // descriptor_set_manager.bind_buffer(i as u32, 6, &material_buffer_info),
+                    // descriptor_set_manager.bind_image(i as u32, 7, &image_infos),
+                ];
+
+                descriptor_set_manager.update_descriptors(&descriptor_writes);
+            });
     }
 
     fn update_ui_buffers(&mut self, ui: &mut UserInterface) {
+        puffin::profile_function!();
         let mut vertex_start = 0;
         let mut index_start = 0;
         self.draw_indexed.clear();
@@ -427,7 +497,7 @@ impl Renderer {
         }
     }
 
-    pub fn raytrace(&mut self, command_buffer: CommandBuffer) {
+    fn raytrace(&mut self, command_buffer: CommandBuffer) {
         let extent = self.swapchain.extent();
 
         let subresource_range = vk::ImageSubresourceRangeBuilder::new()
@@ -586,6 +656,8 @@ impl Renderer {
                 }
             }
         });
+
+        self.create_acceleration_structures(scene);
     }
 
     fn create_default_render_pass(&mut self) {
@@ -658,16 +730,8 @@ impl Renderer {
         self.ui_pipeline =
             GraphicsPipeline::new_ui(self.device.clone(), &self.swapchain, &self.render_pass);
 
-        self.raytracing_pipeline = RaytracingPipeline::new(
-            self.device.clone(),
-            &self.swapchain,
-            &self.tlas[0],
-            &self.accumulation_image_view,
-            &self.output_image_view,
-            &self.uniform_buffers,
-            &self.static_vertex_buffer,
-            &self.static_index_buffer,
-        )
+        self.raytracing_pipeline =
+            RaytracingPipeline::new(self.device.clone(), self.swapchain.images().len() as u32);
     }
 
     fn create_command_buffers(&mut self) {
@@ -692,7 +756,7 @@ impl Renderer {
             .resize_with(count, || UniformBuffer::new(self.device.clone()));
     }
 
-    fn create_acceleration_structures(&mut self) {
+    fn create_acceleration_structures(&mut self, scene: &Scene) {
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
             Renderer::allocate_blas_buffers(
                 self.device.clone(),
@@ -717,6 +781,7 @@ impl Renderer {
                 &mut self.tlas_scratch_buffer,
                 &mut self.instances_buffer,
                 &self.blas,
+                scene.instances(),
                 &self.raytracing_properties,
             );
             Renderer::create_tlas(
@@ -724,6 +789,31 @@ impl Renderer {
                 &mut self.tlas,
                 &self.tlas_scratch_buffer,
                 &self.tlas_buffer,
+            );
+        });
+    }
+
+    fn update_acceleration_structures(&mut self, scene: &Scene) {
+        puffin::profile_function!();
+        let old = self.tlas.pop().unwrap();
+        CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
+            Renderer::allocate_tlas_buffers(
+                self.device.clone(),
+                &mut self.tlas,
+                &mut self.tlas_buffer,
+                &mut self.tlas_scratch_buffer,
+                &mut self.instances_buffer,
+                &self.blas,
+                scene.instances(),
+                &self.raytracing_properties,
+            );
+            self.tlas[0].generate(
+                &command_buffer,
+                &self.tlas_scratch_buffer,
+                0,
+                &self.tlas_buffer,
+                0,
+                Some(old.handle()),
             );
         });
     }
@@ -739,15 +829,10 @@ impl Renderer {
     ) {
         blas.clear();
 
-        // for model in models {
         let mut geometries = BottomLevelGeometry::default();
-        // for mesh in model.meshes() {
-        //     for primitive in mesh.primitives() {
-        //         let vertex_buffer = primitive.vertex_buffer();
-        //         let index_buffer = primitive.index_buffer().as_ref().unwrap();
+        // for model in models {
         geometries.add_geometry_triangles(vertex_buffer, index_buffer, 0, 24, 0, 36, true);
-        //     }
-        // }
+
         blas.push(BottomLevelAccelerationStructure::new(
             device.clone(),
             *raytracing_properties,
@@ -803,16 +888,17 @@ impl Renderer {
         tlas_scratch_buffer: &mut Buffer,
         instances_buffer: &mut Buffer,
         blas: &[BottomLevelAccelerationStructure],
+        instances: &[Instance],
         raytracing_properties: &RaytracingProperties,
     ) {
-        let instances = blas
+        let instances = instances
             .iter()
             .enumerate()
-            .map(|(id, blas)| {
+            .map(|(id, instance)| {
                 TopLevelAccelerationStructure::create_instance(
                     &device,
-                    &blas,
-                    Mat4::IDENTITY,
+                    &blas[instance.blas_id() as usize],
+                    instance.transform(),
                     id as _,
                     0,
                 )
@@ -858,7 +944,7 @@ impl Renderer {
         scratch_buffer: &Buffer,
         buffer: &Buffer,
     ) {
-        tlas[0].generate(&command_buffer, scratch_buffer, 0, buffer, 0);
+        tlas[0].generate(&command_buffer, scratch_buffer, 0, buffer, 0, None);
     }
 
     fn create_ouput_images(&mut self) {

@@ -121,14 +121,15 @@ impl Engine {
     }
 
     pub fn resize(&mut self) {
-        self.renderer.recreate_swapchain(&self.window);
+        self.renderer.recreate(&self.window);
     }
 
     pub fn run(&mut self) {
         puffin::GlobalProfiler::lock().new_frame();
         puffin::profile_function!();
         self.camera.update_camera(self.time.delta_time());
-        self.renderer.update(&self.camera, &mut self.ui);
+        self.renderer
+            .update(&self.camera, &self.scene, &mut self.ui);
         self.renderer.draw_frame();
         self.renderer.present_frame();
         self.time.tick();
