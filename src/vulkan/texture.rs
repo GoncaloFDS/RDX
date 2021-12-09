@@ -1,6 +1,7 @@
 use image::GenericImageView;
 use std::path::Path;
 
+#[derive(Default)]
 pub struct Texture {
     width: u32,
     height: u32,

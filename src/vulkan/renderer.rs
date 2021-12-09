@@ -32,7 +32,6 @@ use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::EguiVertex;
 use erupt::vk;
 use glam::{vec2, vec4};
-use std::collections::HashMap;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -41,8 +40,6 @@ use winit::window::Window;
 const VERTICES_PER_QUAD: u64 = 4;
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
-
-const FONT_IMAGE_ID: u32 = 10;
 
 pub struct DrawIndexed {
     pub vertex_offset: u64,
@@ -70,8 +67,9 @@ pub struct Renderer {
     material_buffer: Buffer,
     uniform_buffers: Vec<UniformBuffer>,
     current_frame: usize,
-    textures: HashMap<u32, Texture>,
-    texture_images: HashMap<u32, TextureImage>,
+    egui_texture: Texture,
+    egui_texture_image: TextureImage,
+    texture_images: Vec<TextureImage>,
     sampler: Sampler,
     egui_texture_version: u64,
     draw_indexed: Vec<DrawIndexed>,
@@ -119,6 +117,8 @@ impl Renderer {
         let static_vertex_buffer = Buffer::uninitialized(device.clone());
         let static_index_buffer = Buffer::uninitialized(device.clone());
         let material_buffer = Buffer::uninitialized(device.clone());
+        let egui_texture = Texture::default();
+        let egui_texture_image = TextureImage::uninitialized(device.clone());
 
         let raytracing_properties = RaytracingProperties::new(&device);
         let sampler = Sampler::new(device.clone(), &SamplerInfo::default());
@@ -142,7 +142,8 @@ impl Renderer {
             material_buffer,
             uniform_buffers: vec![],
             current_frame: 0,
-            textures: Default::default(),
+            egui_texture,
+            egui_texture_image,
             texture_images: Default::default(),
             sampler,
             egui_texture_version: 0,
@@ -271,11 +272,11 @@ impl Renderer {
 
                 let image_infos: Vec<_> = self
                     .texture_images
-                    .values()
-                    .map(|image_view| {
+                    .iter()
+                    .map(|texture_image| {
                         vk::DescriptorImageInfoBuilder::new()
                             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                            .image_view(image_view.image_view().handle())
+                            .image_view(texture_image.image_view().handle())
                     })
                     .collect();
 
@@ -354,27 +355,24 @@ impl Renderer {
         let font_texture = Texture::new(texture.width as _, texture.height as _, data);
         let font_image = TextureImage::new(self.device.clone(), &self.command_pool, &font_texture);
 
-        self.textures.insert(FONT_IMAGE_ID, font_texture);
-        self.texture_images.insert(FONT_IMAGE_ID, font_image);
+        self.egui_texture = font_texture;
+        self.egui_texture_image = font_image;
 
         let descriptor_set_manager = self.ui_pipeline.descriptor_set_manager();
-        if let Some(font_image) = self.texture_images.get(&FONT_IMAGE_ID) {
-            self.swapchain
-                .images()
-                .iter()
-                .enumerate()
-                .for_each(|(i, _)| {
-                    let image_info = [vk::DescriptorImageInfoBuilder::new()
-                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        .image_view(font_image.image_view().handle())
-                        .sampler(font_image.sampler().handle())];
+        self.swapchain
+            .images()
+            .iter()
+            .enumerate()
+            .for_each(|(i, _)| {
+                let image_info = [vk::DescriptorImageInfoBuilder::new()
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image_view(self.egui_texture_image.image_view().handle())
+                    .sampler(self.egui_texture_image.sampler().handle())];
 
-                    let descriptor_writes =
-                        [descriptor_set_manager.bind_image(i as _, 0, &image_info)];
+                let descriptor_writes = [descriptor_set_manager.bind_image(i as _, 0, &image_info)];
 
-                    descriptor_set_manager.update_descriptors(&descriptor_writes);
-                });
-        }
+                descriptor_set_manager.update_descriptors(&descriptor_writes);
+            });
     }
 
     pub fn draw_frame(&mut self) {
@@ -674,15 +672,10 @@ impl Renderer {
             }
         });
 
-        scene
-            .textures()
-            .iter()
-            .enumerate()
-            .for_each(|(id, texture)| {
-                let texture_image =
-                    TextureImage::new(self.device.clone(), &self.command_pool, texture);
-                self.texture_images.insert(id as u32, texture_image);
-            });
+        scene.textures().iter().for_each(|texture| {
+            let texture_image = TextureImage::new(self.device.clone(), &self.command_pool, texture);
+            self.texture_images.push(texture_image);
+        });
 
         self.create_acceleration_structures(scene);
     }

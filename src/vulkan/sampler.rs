@@ -23,8 +23,8 @@ pub struct SamplerInfo {
 impl Default for SamplerInfo {
     fn default() -> Self {
         SamplerInfo {
-            mag_filter: vk::Filter::LINEAR,
-            min_filter: vk::Filter::LINEAR,
+            mag_filter: vk::Filter::NEAREST,
+            min_filter: vk::Filter::NEAREST,
             address_mode_u: vk::SamplerAddressMode::CLAMP_TO_EDGE,
             address_mode_v: vk::SamplerAddressMode::CLAMP_TO_EDGE,
             address_mode_w: vk::SamplerAddressMode::CLAMP_TO_EDGE,
@@ -48,8 +48,11 @@ pub struct Sampler {
 }
 
 impl Sampler {
-    pub fn handle(&self) -> vk::Sampler {
-        self.handle
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        Sampler {
+            handle: Default::default(),
+            device,
+        }
     }
 
     pub fn new(device: Rc<Device>, info: &SamplerInfo) -> Self {
@@ -75,6 +78,12 @@ impl Sampler {
             handle: sampler,
             device,
         }
+    }
+}
+
+impl Sampler {
+    pub fn handle(&self) -> vk::Sampler {
+        self.handle
     }
 }
 

@@ -31,12 +31,16 @@ impl Scene {
                 instances.push(Instance::new(
                     i % 3,
                     0,
-                    Mat4::from_translation(vec3(2.0 * i as f32 - 50.0, 0.0, 2.0 * j as f32 - 50.0)),
+                    Mat4::from_translation(vec3(i as f32 - 50.0, 0.0, j as f32 - 50.0)),
                 ));
             }
         }
 
-        let textures = vec![Texture::load_texture("resources/textures/block_atlas.png")];
+        let textures = vec![
+            Texture::load_texture("resources/textures/grass_side_carried.png"),
+            Texture::load_texture("resources/textures/grass_carried.png"),
+            Texture::load_texture("resources/textures/dirt.png"),
+        ];
 
         let materials = vec![
             Material::new(vec3(1.0, 0.0, 0.0)).as_std430(),

@@ -15,16 +15,12 @@ pub struct TextureImage {
 }
 
 impl TextureImage {
-    pub fn image(&self) -> &Image {
-        &self.image
-    }
-
-    pub fn image_view(&self) -> &ImageView {
-        &self.image_view
-    }
-
-    pub fn sampler(&self) -> &Sampler {
-        &self.sampler
+    pub fn uninitialized(device: Rc<Device>) -> Self {
+        TextureImage {
+            image: Image::uninitialized(device.clone()),
+            image_view: ImageView::uninitialized(device.clone()),
+            sampler: Sampler::uninitialized(device.clone()),
+        }
     }
 
     pub fn new(device: Rc<Device>, command_pool: &CommandPool, texture: &Texture) -> Self {
@@ -67,5 +63,19 @@ impl TextureImage {
             image_view,
             sampler,
         }
+    }
+}
+
+impl TextureImage {
+    pub fn image(&self) -> &Image {
+        &self.image
+    }
+
+    pub fn image_view(&self) -> &ImageView {
+        &self.image_view
+    }
+
+    pub fn sampler(&self) -> &Sampler {
+        &self.sampler
     }
 }

@@ -1,5 +1,5 @@
 use crate::vulkan::buffer::Buffer;
-use crate::vulkan::vertex::{IndexBuffer, ModelVertex, Std430ModelVertex, VertexBuffer};
+use crate::vulkan::vertex::Std430ModelVertex;
 use erupt::vk;
 use std::mem::size_of;
 

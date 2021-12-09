@@ -2,9 +2,7 @@ use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::raytracing::acceleration_structure;
-use crate::vulkan::raytracing::acceleration_structure::{
-    get_total_memory_requirements, AccelerationStrutcture,
-};
+use crate::vulkan::raytracing::acceleration_structure::AccelerationStrutcture;
 use crate::vulkan::raytracing::bottom_level_geometry::BottomLevelGeometry;
 use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
 use erupt::vk;

@@ -1,13 +1,8 @@
-use crate::vulkan::buffer::Buffer;
 use crate::vulkan::descriptor_binding::DescriptorBinding;
 use crate::vulkan::descriptor_set_manager::DescriptorSetManager;
 use crate::vulkan::device::Device;
-use crate::vulkan::image_view::ImageView;
 use crate::vulkan::pipeline_layout::PipelineLayout;
-use crate::vulkan::raytracing::top_level_acceleration_structure::TopLevelAccelerationStructure;
 use crate::vulkan::shader_module::ShaderModule;
-use crate::vulkan::swapchain::Swapchain;
-use crate::vulkan::uniform_buffer::UniformBuffer;
 use erupt::vk;
 use std::rc::Rc;
 
@@ -111,7 +106,7 @@ impl RaytracingPipeline {
             // Textures
             DescriptorBinding::new(
                 7,
-                2,
+                3,
                 vk::DescriptorType::SAMPLED_IMAGE,
                 vk::ShaderStageFlags::CLOSEST_HIT_KHR,
             ),

@@ -27,6 +27,7 @@ pub struct Material {
 pub struct Vertex {
     pub position: Vec3,
     pub uv: Vec2,
+    pub side: u32,
 }
 
 type Textures = RuntimeArray<Image!(2D, type=f32, sampled)>;
@@ -46,7 +47,7 @@ impl<'a> TextureSampler<'a> {
 
 #[spirv(miss)]
 pub fn miss(#[spirv(incoming_ray_payload)] out: &mut Vec3) {
-    *out = vec3(0.3, 0.6, 0.1)
+    *out = vec3(0.0, 0.2, 0.8)
 }
 
 #[spirv(closest_hit)]
@@ -74,14 +75,13 @@ pub fn closest_hit(
     let barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
 
     let uv = v0.uv * barycentrics.x + v1.uv * barycentrics.y + v2.uv * barycentrics.z;
-    let uv = (uv + vec2(2.0, 3.0)) * 1.0 / 16.0;
 
     let texture_sampler = TextureSampler {
         textures,
         sampler: *sampler,
         uv,
     };
-    let tex = texture_sampler.sample(0);
+    let tex = texture_sampler.sample(v0.side);
 
     *out = tex.truncate();
 }
