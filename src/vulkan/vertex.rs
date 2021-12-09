@@ -1,5 +1,6 @@
 use crate::vulkan::buffer::Buffer;
 use bytemuck::{Pod, Zeroable};
+use crevice::std430::{AsStd430, Std430};
 use erupt::vk;
 use glam::{Vec2, Vec3, Vec4};
 use memoffset::offset_of;
@@ -11,17 +12,18 @@ pub trait Vertex {
     fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescriptionBuilder<'static>>;
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, AsStd430)]
 pub struct ModelVertex {
     position: Vec3,
+    uv: Vec2,
 }
 
 unsafe impl Zeroable for ModelVertex {}
 unsafe impl Pod for ModelVertex {}
 
 impl ModelVertex {
-    pub fn new(position: Vec3) -> Self {
-        ModelVertex { position }
+    pub fn new(position: Vec3, uv: Vec2) -> Self {
+        ModelVertex { position, uv }
     }
 }
 
@@ -34,11 +36,18 @@ impl Vertex for ModelVertex {
     }
 
     fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescriptionBuilder<'static>> {
-        vec![vk::VertexInputAttributeDescriptionBuilder::new()
-            .binding(0)
-            .location(0)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .offset(offset_of!(Self, position) as u32)]
+        vec![
+            vk::VertexInputAttributeDescriptionBuilder::new()
+                .binding(0)
+                .location(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(offset_of!(Self, position) as u32),
+            vk::VertexInputAttributeDescriptionBuilder::new()
+                .binding(0)
+                .location(1)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(offset_of!(Self, uv) as u32),
+        ]
     }
 }
 

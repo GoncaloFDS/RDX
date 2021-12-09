@@ -11,7 +11,7 @@ use crate::vulkan::framebuffer::Framebuffer;
 use crate::vulkan::graphics_pipeline::{GraphicsPipeline, PushConstants};
 use crate::vulkan::image::Image;
 use crate::vulkan::image_view::ImageView;
-use crate::vulkan::model::{Instance, Model};
+use crate::vulkan::model::Instance;
 use crate::vulkan::raytracing::acceleration_structure::{
     get_total_memory_requirements, AccelerationStrutcture,
 };
@@ -22,6 +22,7 @@ use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
 use crate::vulkan::raytracing::shader_binding_table::{Entry, ShaderBindingTable};
 use crate::vulkan::raytracing::top_level_acceleration_structure::TopLevelAccelerationStructure;
 use crate::vulkan::render_pass::RenderPass;
+use crate::vulkan::sampler::{Sampler, SamplerInfo};
 use crate::vulkan::scene::Scene;
 use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
@@ -30,7 +31,7 @@ use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::EguiVertex;
 use erupt::vk;
-use glam::{vec2, vec3, vec4, Mat4};
+use glam::{vec2, vec4};
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::rc::Rc;
@@ -71,6 +72,7 @@ pub struct Renderer {
     current_frame: usize,
     textures: HashMap<u32, Texture>,
     texture_images: HashMap<u32, TextureImage>,
+    sampler: Sampler,
     egui_texture_version: u64,
     draw_indexed: Vec<DrawIndexed>,
     tlas: Vec<TopLevelAccelerationStructure>,
@@ -119,6 +121,7 @@ impl Renderer {
         let material_buffer = Buffer::uninitialized(device.clone());
 
         let raytracing_properties = RaytracingProperties::new(&device);
+        let sampler = Sampler::new(device.clone(), &SamplerInfo::default());
 
         Renderer {
             device,
@@ -141,6 +144,7 @@ impl Renderer {
             current_frame: 0,
             textures: Default::default(),
             texture_images: Default::default(),
+            sampler,
             egui_texture_version: 0,
             draw_indexed: vec![],
             tlas: vec![],
@@ -265,16 +269,18 @@ impl Renderer {
                     .buffer(material_buffer.handle())
                     .range(vk::WHOLE_SIZE)];
 
-                // let image_infos: Vec<_> = texture_image_views
-                //     .iter()
-                //     .zip(texture_samplers)
-                //     .map(|(image_view, sampler)| {
-                //         vk::DescriptorImageInfoBuilder::new()
-                //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                //             .image_view(*image_view)
-                //             .sampler(*sampler)
-                //     })
-                //     .collect();
+                let image_infos: Vec<_> = self
+                    .texture_images
+                    .values()
+                    .map(|image_view| {
+                        vk::DescriptorImageInfoBuilder::new()
+                            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                            .image_view(image_view.image_view().handle())
+                    })
+                    .collect();
+
+                let sampler_info =
+                    [vk::DescriptorImageInfoBuilder::new().sampler(self.sampler.handle())];
 
                 let descriptor_writes = [
                     descriptor_set_manager.bind_acceleration_structure(i as u32, 0, &tlas_info),
@@ -284,7 +290,8 @@ impl Renderer {
                     descriptor_set_manager.bind_buffer(i as u32, 4, &vertex_buffer_info),
                     descriptor_set_manager.bind_buffer(i as u32, 5, &index_buffer_info),
                     descriptor_set_manager.bind_buffer(i as u32, 6, &material_buffer_info),
-                    // descriptor_set_manager.bind_image(i as u32, 7, &image_infos),
+                    descriptor_set_manager.bind_image(i as u32, 7, &image_infos),
+                    descriptor_set_manager.bind_image(i as u32, 8, &sampler_info),
                 ];
 
                 descriptor_set_manager.update_descriptors(&descriptor_writes);
@@ -625,9 +632,8 @@ impl Renderer {
         self.device.wait_idle();
     }
 
-    pub fn upload_meshes(&mut self, scene: &Scene) {
+    pub fn upload_scene_buffers(&mut self, scene: &Scene) {
         puffin::profile_function!();
-        log::debug!("upload meshes");
 
         let mut staging_buffers = vec![];
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
@@ -643,7 +649,6 @@ impl Renderer {
 
             for model in scene.models() {
                 for mesh in model.meshes() {
-                    log::debug!("mesh");
                     let buffer_usage_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                         | vk::BufferUsageFlags::STORAGE_BUFFER
                         | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
@@ -668,6 +673,16 @@ impl Renderer {
                 }
             }
         });
+
+        scene
+            .textures()
+            .iter()
+            .enumerate()
+            .for_each(|(id, texture)| {
+                let texture_image =
+                    TextureImage::new(self.device.clone(), &self.command_pool, texture);
+                self.texture_images.insert(id as u32, texture_image);
+            });
 
         self.create_acceleration_structures(scene);
     }

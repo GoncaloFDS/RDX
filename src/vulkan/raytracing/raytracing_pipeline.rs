@@ -89,7 +89,7 @@ impl RaytracingPipeline {
                 vk::DescriptorType::UNIFORM_BUFFER,
                 vk::ShaderStageFlags::RAYGEN_KHR | vk::ShaderStageFlags::MISS_KHR,
             ),
-            // Vertex, Index, Material, Offset
+            // Vertex, Index, Material
             DescriptorBinding::new(
                 4,
                 1,
@@ -108,19 +108,19 @@ impl RaytracingPipeline {
                 vk::DescriptorType::STORAGE_BUFFER,
                 vk::ShaderStageFlags::CLOSEST_HIT_KHR,
             ),
-            // DescriptorBinding::new(
-            //     7,
-            //     1,
-            //     vk::DescriptorType::STORAGE_BUFFER,
-            //     vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-            // ),
             // Textures
-            // DescriptorBinding::new(
-            //     8,
-            //     texture_image_views.len() as u32,
-            //     vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            //     vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-            // ),
+            DescriptorBinding::new(
+                7,
+                2,
+                vk::DescriptorType::SAMPLED_IMAGE,
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+            ),
+            DescriptorBinding::new(
+                8,
+                1,
+                vk::DescriptorType::SAMPLER,
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+            ),
         ];
 
         let descriptor_set_manager =

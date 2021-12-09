@@ -1,5 +1,5 @@
 use crate::vulkan::buffer::Buffer;
-use crate::vulkan::vertex::ModelVertex;
+use crate::vulkan::vertex::{IndexBuffer, ModelVertex, Std430ModelVertex, VertexBuffer};
 use erupt::vk;
 use std::mem::size_of;
 
@@ -37,7 +37,7 @@ impl BottomLevelGeometry {
                 .vertex_data(vk::DeviceOrHostAddressConstKHR {
                     device_address: vertex_buffer.get_device_address(),
                 })
-                .vertex_stride(size_of::<ModelVertex>() as _)
+                .vertex_stride(size_of::<Std430ModelVertex>() as _)
                 .max_vertex(vertex_count)
                 .vertex_format(vk::Format::R32G32B32_SFLOAT)
                 .index_data(vk::DeviceOrHostAddressConstKHR {
@@ -55,7 +55,7 @@ impl BottomLevelGeometry {
             });
 
         let build_offset_info = vk::AccelerationStructureBuildRangeInfoKHRBuilder::new()
-            .first_vertex(vertex_offset / size_of::<ModelVertex>() as u32)
+            .first_vertex(vertex_offset / size_of::<Std430ModelVertex>() as u32)
             .primitive_offset(index_offset)
             .primitive_count(index_count / 3)
             .transform_offset(0);

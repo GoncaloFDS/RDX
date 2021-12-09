@@ -1,9 +1,10 @@
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
-use crate::vulkan::vertex::{IndexBuffer, ModelVertex, VertexBuffer};
+use crate::vulkan::vertex::{IndexBuffer, ModelVertex, Std430ModelVertex, VertexBuffer};
+use crevice::std430::AsStd430;
 use erupt::vk;
-use glam::{vec3, Mat4, Vec3};
+use glam::{vec2, vec3, Mat4, Vec3};
 use gltf::buffer::Data;
 use gltf::mesh::Reader;
 use gltf::{Document, Gltf, Semantic};
@@ -43,12 +44,12 @@ impl Instance {
 }
 
 pub struct Mesh {
-    vertices: Vec<ModelVertex>,
+    vertices: Vec<Std430ModelVertex>,
     indices: Vec<u32>,
 }
 
 impl Mesh {
-    pub fn vertices(&self) -> &[ModelVertex] {
+    pub fn vertices(&self) -> &[Std430ModelVertex] {
         &self.vertices
     }
 
@@ -68,35 +69,35 @@ impl Model {
         let p1 = vec3(0.5, 0.5, 0.5);
         let vertices = vec![
             //
-            ModelVertex::new(vec3(p0.x, p0.y, p0.z)),
-            ModelVertex::new(vec3(p0.x, p0.y, p1.z)),
-            ModelVertex::new(vec3(p0.x, p1.y, p1.z)),
-            ModelVertex::new(vec3(p0.x, p1.y, p0.z)),
+            ModelVertex::new(vec3(p0.x, p0.y, p0.z), vec2(0.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p0.x, p0.y, p1.z), vec2(1.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p0.x, p1.y, p1.z), vec2(1.0, 0.0)).as_std430(),
+            ModelVertex::new(vec3(p0.x, p1.y, p0.z), vec2(0.0, 0.0)).as_std430(),
             //
-            ModelVertex::new(vec3(p1.x, p0.y, p1.z)),
-            ModelVertex::new(vec3(p1.x, p0.y, p0.z)),
-            ModelVertex::new(vec3(p1.x, p1.y, p0.z)),
-            ModelVertex::new(vec3(p1.x, p1.y, p1.z)),
+            ModelVertex::new(vec3(p1.x, p0.y, p1.z), vec2(0.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p1.x, p0.y, p0.z), vec2(1.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p1.x, p1.y, p0.z), vec2(1.0, 0.0)).as_std430(),
+            ModelVertex::new(vec3(p1.x, p1.y, p1.z), vec2(0.0, 0.0)).as_std430(),
             //
-            ModelVertex::new(vec3(p1.x, p0.y, p0.z)),
-            ModelVertex::new(vec3(p0.x, p0.y, p0.z)),
-            ModelVertex::new(vec3(p0.x, p1.y, p0.z)),
-            ModelVertex::new(vec3(p1.x, p1.y, p0.z)),
+            ModelVertex::new(vec3(p1.x, p0.y, p0.z), vec2(0.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p0.x, p0.y, p0.z), vec2(1.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p0.x, p1.y, p0.z), vec2(1.0, 0.0)).as_std430(),
+            ModelVertex::new(vec3(p1.x, p1.y, p0.z), vec2(0.0, 0.0)).as_std430(),
             //
-            ModelVertex::new(vec3(p0.x, p0.y, p1.z)),
-            ModelVertex::new(vec3(p1.x, p0.y, p1.z)),
-            ModelVertex::new(vec3(p1.x, p1.y, p1.z)),
-            ModelVertex::new(vec3(p0.x, p1.y, p1.z)),
+            ModelVertex::new(vec3(p0.x, p0.y, p1.z), vec2(0.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p1.x, p0.y, p1.z), vec2(1.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p1.x, p1.y, p1.z), vec2(1.0, 0.0)).as_std430(),
+            ModelVertex::new(vec3(p0.x, p1.y, p1.z), vec2(0.0, 0.0)).as_std430(),
             //
-            ModelVertex::new(vec3(p0.x, p0.y, p0.z)),
-            ModelVertex::new(vec3(p1.x, p0.y, p0.z)),
-            ModelVertex::new(vec3(p1.x, p0.y, p1.z)),
-            ModelVertex::new(vec3(p0.x, p0.y, p1.z)),
+            ModelVertex::new(vec3(p0.x, p0.y, p0.z), vec2(0.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p1.x, p0.y, p0.z), vec2(1.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p1.x, p0.y, p1.z), vec2(1.0, 0.0)).as_std430(),
+            ModelVertex::new(vec3(p0.x, p0.y, p1.z), vec2(0.0, 0.0)).as_std430(),
             //
-            ModelVertex::new(vec3(p1.x, p1.y, p0.z)),
-            ModelVertex::new(vec3(p0.x, p1.y, p0.z)),
-            ModelVertex::new(vec3(p0.x, p1.y, p1.z)),
-            ModelVertex::new(vec3(p1.x, p1.y, p1.z)),
+            ModelVertex::new(vec3(p1.x, p1.y, p0.z), vec2(0.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p0.x, p1.y, p0.z), vec2(1.0, 1.0)).as_std430(),
+            ModelVertex::new(vec3(p0.x, p1.y, p1.z), vec2(1.0, 0.0)).as_std430(),
+            ModelVertex::new(vec3(p1.x, p1.y, p1.z), vec2(0.0, 0.0)).as_std430(),
         ];
 
         let indices = vec![

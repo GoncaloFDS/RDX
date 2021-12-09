@@ -9,8 +9,9 @@
 use spirv_std::macros::spirv;
 
 use spirv_std::glam::{uvec2, vec2, vec3, vec4, Mat4, UVec3, Vec2, Vec3, Vec4};
+use spirv_std::image::SampledImage;
 use spirv_std::ray_tracing::{AccelerationStructure, RayFlags};
-use spirv_std::Image;
+use spirv_std::{Image, RuntimeArray, Sampler};
 
 pub struct UniformBufferObject {
     pub view_model: Mat4,
@@ -20,7 +21,27 @@ pub struct UniformBufferObject {
 }
 
 pub struct Material {
-    pub color: Vec4,
+    pub color: Vec3,
+}
+
+pub struct Vertex {
+    pub position: Vec3,
+    pub uv: Vec2,
+}
+
+type Textures = RuntimeArray<Image!(2D, type=f32, sampled)>;
+
+struct TextureSampler<'a> {
+    textures: &'a Textures,
+    sampler: Sampler,
+    uv: Vec2,
+}
+
+impl<'a> TextureSampler<'a> {
+    fn sample(&self, texture_id: u32) -> Vec4 {
+        let texture = unsafe { self.textures.index(texture_id as usize) };
+        texture.sample_by_lod(self.sampler, self.uv, 0.0)
+    }
 }
 
 #[spirv(miss)]
@@ -31,11 +52,38 @@ pub fn miss(#[spirv(incoming_ray_payload)] out: &mut Vec3) {
 #[spirv(closest_hit)]
 pub fn closest_hit(
     #[spirv(incoming_ray_payload)] out: &mut Vec3,
-    #[spirv(instance_id)] id: u32,
+    #[spirv(primitive_id)] id: u32,
     #[spirv(instance_custom_index)] index: u32,
+    #[spirv(hit_attribute)] attribs: &mut Vec2,
+    #[spirv(descriptor_set = 0, binding = 4, storage_buffer)] vertices: &[Vertex],
+    #[spirv(descriptor_set = 0, binding = 5, storage_buffer)] indices: &[u32],
     #[spirv(descriptor_set = 0, binding = 6, storage_buffer)] materials: &[Material],
+    #[spirv(descriptor_set = 0, binding = 7)] textures: &Textures,
+    #[spirv(descriptor_set = 0, binding = 8)] sampler: &Sampler,
 ) {
-    *out = materials[index as usize].color.truncate();
+    let id = 3 * id as usize;
+    let ind = (
+        indices[id] as usize,
+        indices[id + 1] as usize,
+        indices[id + 2] as usize,
+    );
+    let v0 = &vertices[ind.0];
+    let v1 = &vertices[ind.1];
+    let v2 = &vertices[ind.2];
+
+    let barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
+
+    let uv = v0.uv * barycentrics.x + v1.uv * barycentrics.y + v2.uv * barycentrics.z;
+    let uv = (uv + vec2(2.0, 3.0)) * 1.0 / 16.0;
+
+    let texture_sampler = TextureSampler {
+        textures,
+        sampler: *sampler,
+        uv,
+    };
+    let tex = texture_sampler.sample(0);
+
+    *out = tex.truncate();
 }
 
 #[spirv(ray_generation)]

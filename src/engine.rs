@@ -6,7 +6,6 @@ use crate::vulkan::renderer::Renderer;
 use crate::vulkan::scene::Scene;
 use egui_winit::winit::event::Event;
 use egui_winit::winit::event_loop::ControlFlow;
-use egui_winit::State;
 use glam::{vec3, Vec3};
 use std::rc::Rc;
 use winit::dpi::{LogicalSize, PhysicalPosition};
@@ -33,7 +32,7 @@ impl Engine {
         let mut renderer = Renderer::new();
 
         let scene = Scene::new();
-        renderer.upload_meshes(&scene);
+        renderer.upload_scene_buffers(&scene);
 
         renderer.setup(&window);
 

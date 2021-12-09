@@ -305,7 +305,7 @@ impl CommandBuffer {
         }
     }
 
-    pub fn create_device_local_buffer_with_data<T: Copy>(
+    pub fn create_device_local_buffer_with_data<T>(
         &self,
         device: Rc<Device>,
         usage: vk::BufferUsageFlags,
