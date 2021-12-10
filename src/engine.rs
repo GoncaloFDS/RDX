@@ -7,11 +7,38 @@ use crate::vulkan::scene::Scene;
 use egui_winit::winit::event::Event;
 use egui_winit::winit::event_loop::ControlFlow;
 use glam::{vec3, Vec3};
+use hecs::World;
+use rand::distributions::Standard;
+use rand::prelude::*;
 use std::rc::Rc;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
+
+#[derive(Debug, PartialEq)]
+pub enum Block {
+    Grass,
+    Stone,
+}
+
+impl Distribution<Block> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
+        let index = rng.gen_range(0..2);
+        match index {
+            0 => Block::Grass,
+            1 => Block::Stone,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct Position {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+}
 
 pub struct Engine {
     time: Time,
@@ -21,13 +48,40 @@ pub struct Engine {
     camera: Camera,
     input: Input,
     ui: UserInterface,
+    world: World,
+}
+
+fn spawn_entities(world: &mut World) {
+    let mut rng = thread_rng();
+    let mut to_spawn = vec![];
+    for x in 0..32 {
+        for y in -32..0 {
+            for z in 0..32 {
+                let block: Block = rng.gen();
+                let position = Position { x, y, z };
+                to_spawn.push((block, position))
+            }
+        }
+    }
+    world.spawn_batch(to_spawn);
+}
+
+fn system_print_entities(world: &mut World) {
+    for (id, (block, pos)) in &mut world.query::<(&Block, &Position)>() {
+        // log::debug!("[{:?}, {:?}, {:?}] = {:?}", pos.x, pos.y, pos.z, block);
+    }
 }
 
 impl Engine {
     pub fn new(width: u32, height: u32, name: &str) -> (Engine, EventLoop<()>) {
         puffin::set_scopes_on(true);
+
         let (window, event_loop) = Self::new_window(width, height, name);
         let window = Rc::new(window);
+
+        let mut world = World::new();
+        spawn_entities(&mut world);
+        system_print_entities(&mut world);
 
         let mut renderer = Renderer::new();
 
@@ -46,6 +100,7 @@ impl Engine {
             camera: Camera::new(vec3(0.0, 2.0, 5.0), Vec3::ZERO),
             input: Default::default(),
             ui,
+            world,
         };
 
         (engine, event_loop)
@@ -128,7 +183,7 @@ impl Engine {
         puffin::profile_function!();
         self.camera.update_camera(self.time.delta_time());
         self.renderer
-            .update(&self.camera, &self.scene, &mut self.ui);
+            .update(&self.camera, &self.scene, &mut self.ui, &mut self.world);
         self.renderer.draw_frame();
         self.renderer.present_frame();
         self.time.tick();

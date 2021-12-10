@@ -100,6 +100,16 @@ impl BottomLevelAccelerationStructure {
             &[build_offsets],
         )
     }
+
+    pub fn get_address(&self) -> u64 {
+        let address_info = vk::AccelerationStructureDeviceAddressInfoKHRBuilder::new()
+            .acceleration_structure(self.handle);
+
+        unsafe {
+            self.device
+                .get_acceleration_structure_device_address_khr(&address_info)
+        }
+    }
 }
 
 impl Drop for BottomLevelAccelerationStructure {

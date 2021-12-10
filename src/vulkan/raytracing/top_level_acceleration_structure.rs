@@ -79,7 +79,7 @@ impl TopLevelAccelerationStructure {
     pub fn generate(
         &mut self,
         command_buffer: &CommandBuffer,
-        scratch_buffer: &Buffer,
+        scratch_buffer: vk::DeviceAddress,
         scratch_offset: u64,
         result_buffer: &Buffer,
         result_offset: u64,
@@ -112,8 +112,7 @@ impl TopLevelAccelerationStructure {
         let build_offset_info = &build_offset_info as *const _;
 
         build_geometry_info.dst_acceleration_structure = self.handle;
-        build_geometry_info.scratch_data.device_address =
-            scratch_buffer.get_device_address() + scratch_offset;
+        build_geometry_info.scratch_data.device_address = scratch_buffer + scratch_offset;
 
         command_buffer.build_acceleration_structure(
             &self.device,
@@ -125,22 +124,17 @@ impl TopLevelAccelerationStructure {
     pub fn create_instance(
         device: &Device,
         blas: &BottomLevelAccelerationStructure,
+        blas_address: u64,
         transform: Mat4,
         instance_id: u32,
         hit_group_id: u32,
     ) -> vk::AccelerationStructureInstanceKHR {
-        let address_info = vk::AccelerationStructureDeviceAddressInfoKHRBuilder::new()
-            .acceleration_structure(blas.handle());
-
-        let as_address =
-            unsafe { device.get_acceleration_structure_device_address_khr(&address_info) };
-
         *vk::AccelerationStructureInstanceKHRBuilder::new()
             .instance_custom_index(instance_id)
             .mask(0xFF)
             .instance_shader_binding_table_record_offset(hit_group_id)
             .flags(vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR)
-            .acceleration_structure_reference(as_address)
+            .acceleration_structure_reference(blas_address)
             .transform(*vk::TransformMatrixKHRBuilder::new().matrix([
                 transform.row(0).to_array(),
                 transform.row(1).to_array(),

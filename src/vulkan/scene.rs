@@ -26,13 +26,15 @@ impl Scene {
         let models = vec![Model::cube()];
 
         let mut instances = vec![];
-        for i in 0..100 {
-            for j in 0..100 {
-                instances.push(Instance::new(
-                    i % 3,
-                    0,
-                    Mat4::from_translation(vec3(i as f32 - 50.0, 0.0, j as f32 - 50.0)),
-                ));
+        for x in 0..32 {
+            for y in -32..0 {
+                for z in 0..32 {
+                    instances.push(Instance::new(
+                        x % 3,
+                        0,
+                        Mat4::from_translation(vec3(x as f32 - 50.0, y as f32, z as f32 - 50.0)),
+                    ));
+                }
             }
         }
 

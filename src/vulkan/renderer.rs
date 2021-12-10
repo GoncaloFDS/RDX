@@ -1,4 +1,5 @@
 use crate::camera::Camera;
+use crate::engine::{Block, Position};
 use crate::user_interface::UserInterface;
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
@@ -31,7 +32,8 @@ use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::EguiVertex;
 use erupt::vk;
-use glam::{vec2, vec4};
+use glam::{vec2, vec3, vec4, Mat4};
+use hecs::World;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -202,7 +204,13 @@ impl Renderer {
         self.create(window);
     }
 
-    pub fn update(&mut self, camera: &Camera, scene: &Scene, ui: &mut UserInterface) {
+    pub fn update(
+        &mut self,
+        camera: &Camera,
+        scene: &Scene,
+        ui: &mut UserInterface,
+        world: &mut World,
+    ) {
         puffin::profile_function!();
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
@@ -224,7 +232,7 @@ impl Renderer {
             self.update_font_texture(texture);
         }
 
-        self.update_acceleration_structures(scene);
+        self.update_acceleration_structures(world);
         self.update_descriptor_sets();
     }
 
@@ -813,8 +821,21 @@ impl Renderer {
         });
     }
 
-    fn update_acceleration_structures(&mut self, scene: &Scene) {
+    fn update_acceleration_structures(&mut self, world: &mut World) {
         puffin::profile_function!();
+        let instances = world
+            .query::<(&Position, &Block)>()
+            .iter()
+            .filter(|(_, (_, block))| **block == Block::Grass)
+            .map(|(id, (pos, block))| {
+                Instance::new(
+                    id.id(),
+                    0,
+                    Mat4::from_translation(vec3(pos.x as f32, pos.y as f32, pos.z as f32)),
+                )
+            })
+            .collect::<Vec<_>>();
+
         let old = self.tlas.pop().unwrap();
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
             Renderer::allocate_tlas_buffers(
@@ -824,12 +845,12 @@ impl Renderer {
                 &mut self.tlas_scratch_buffer,
                 &mut self.instances_buffer,
                 &self.blas,
-                scene.instances(),
+                &instances,
                 &self.raytracing_properties,
             );
             self.tlas[0].generate(
                 &command_buffer,
-                &self.tlas_scratch_buffer,
+                self.tlas_scratch_buffer.get_device_address(),
                 0,
                 &self.tlas_buffer,
                 0,
@@ -911,12 +932,14 @@ impl Renderer {
         instances: &[Instance],
         raytracing_properties: &RaytracingProperties,
     ) {
+        let blas_addressess = blas.iter().map(|b| b.get_address()).collect::<Vec<_>>();
         let instances = instances
             .iter()
             .map(|instance| {
                 TopLevelAccelerationStructure::create_instance(
                     &device,
                     &blas[instance.blas_id() as usize],
+                    blas_addressess[instance.blas_id() as usize],
                     instance.transform(),
                     instance.id(),
                     0,
@@ -963,7 +986,14 @@ impl Renderer {
         scratch_buffer: &Buffer,
         buffer: &Buffer,
     ) {
-        tlas[0].generate(&command_buffer, scratch_buffer, 0, buffer, 0, None);
+        tlas[0].generate(
+            &command_buffer,
+            scratch_buffer.get_device_address(),
+            0,
+            buffer,
+            0,
+            None,
+        );
     }
 
     fn create_ouput_images(&mut self) {
