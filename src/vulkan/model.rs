@@ -49,7 +49,6 @@ impl Mesh {
 
 pub struct Model {
     meshes: Vec<Mesh>,
-    global_transform: Mat4,
 }
 
 impl Model {
@@ -106,10 +105,7 @@ impl Model {
 
         let mesh = Mesh { vertices, indices };
 
-        Model {
-            meshes: vec![mesh],
-            global_transform: Default::default(),
-        }
+        Model { meshes: vec![mesh] }
     }
 }
 

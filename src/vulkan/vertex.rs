@@ -1,11 +1,8 @@
-use crate::vulkan::buffer::Buffer;
-use bytemuck::{Pod, Zeroable};
 use crevice::std430::AsStd430;
 use erupt::vk;
 use glam::{Vec2, Vec3, Vec4};
 use memoffset::offset_of;
 use std::mem::size_of;
-use std::sync::Arc;
 
 pub trait Vertex {
     fn binding_descriptions() -> Vec<vk::VertexInputBindingDescriptionBuilder<'static>>;
@@ -18,9 +15,6 @@ pub struct ModelVertex {
     uv: Vec2,
     side: u32,
 }
-
-unsafe impl Zeroable for ModelVertex {}
-unsafe impl Pod for ModelVertex {}
 
 impl ModelVertex {
     pub fn new(position: Vec3, uv: Vec2, side: u32) -> Self {
@@ -63,9 +57,6 @@ pub struct EguiVertex {
     pub tex_coords: Vec2,
     pub color: Vec4,
 }
-
-unsafe impl Zeroable for EguiVertex {}
-unsafe impl Pod for EguiVertex {}
 
 impl EguiVertex {
     pub fn new(position: Vec2, tex_coords: Vec2, color: Vec4) -> Self {

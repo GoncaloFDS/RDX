@@ -34,6 +34,7 @@ use crate::vulkan::vertex::EguiVertex;
 use erupt::vk;
 use glam::{vec2, vec3, vec4, Mat4};
 use hecs::World;
+use rayon::prelude::*;
 use std::mem::size_of;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -42,6 +43,9 @@ use winit::window::Window;
 const VERTICES_PER_QUAD: u64 = 4;
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
+const MAX_INSTANCE_COUNT: u64 = 20000;
+const INSTANCE_BUFFER_SIZE: u64 =
+    size_of::<vk::AccelerationStructureInstanceKHR>() as u64 * MAX_INSTANCE_COUNT;
 
 pub struct DrawIndexed {
     pub vertex_offset: u64,
@@ -173,7 +177,7 @@ impl Renderer {
         self.create_depth_buffer(window);
         self.create_default_render_pass();
         self.create_uniform_buffers();
-        self.create_ouput_images();
+        self.create_output_images();
         self.create_pipelines();
         self.create_shader_binding_table();
         self.create_framebuffers();
@@ -204,13 +208,7 @@ impl Renderer {
         self.create(window);
     }
 
-    pub fn update(
-        &mut self,
-        camera: &Camera,
-        scene: &Scene,
-        ui: &mut UserInterface,
-        world: &mut World,
-    ) {
+    pub fn update(&mut self, camera: &Camera, ui: &mut UserInterface, world: &mut World) {
         puffin::profile_function!();
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
@@ -685,7 +683,7 @@ impl Renderer {
             self.texture_images.push(texture_image);
         });
 
-        self.create_acceleration_structures(scene);
+        self.create_acceleration_structures();
     }
 
     fn create_default_render_pass(&mut self) {
@@ -784,7 +782,7 @@ impl Renderer {
             .resize_with(count, || UniformBuffer::new(self.device.clone()));
     }
 
-    fn create_acceleration_structures(&mut self, scene: &Scene) {
+    fn create_acceleration_structures(&mut self) {
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
             Renderer::allocate_blas_buffers(
                 self.device.clone(),
@@ -808,8 +806,6 @@ impl Renderer {
                 &mut self.tlas_buffer,
                 &mut self.tlas_scratch_buffer,
                 &mut self.instances_buffer,
-                &self.blas,
-                scene.instances(),
                 &self.raytracing_properties,
             );
             Renderer::create_tlas(
@@ -827,7 +823,7 @@ impl Renderer {
             .query::<(&Position, &Block)>()
             .iter()
             .filter(|(_, (_, block))| **block == Block::Grass)
-            .map(|(id, (pos, block))| {
+            .map(|(id, (pos, _block))| {
                 Instance::new(
                     id.id(),
                     0,
@@ -835,19 +831,36 @@ impl Renderer {
                 )
             })
             .collect::<Vec<_>>();
-
         let old = self.tlas.pop().unwrap();
+        self.submit_tlas_update(instances, old);
+    }
+
+    fn submit_tlas_update(&mut self, instances: Vec<Instance>, old: TopLevelAccelerationStructure) {
+        puffin::profile_function!();
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
-            Renderer::allocate_tlas_buffers(
+            puffin::profile_scope!("tlas update");
+            let blas = &self.blas;
+            let blas_addresses = blas.iter().map(|b| b.get_address()).collect::<Vec<_>>();
+            let instances = instances
+                .par_iter()
+                .map(|instance| {
+                    TopLevelAccelerationStructure::create_instance(
+                        blas_addresses[instance.blas_id() as usize],
+                        instance.transform(),
+                        instance.id(),
+                        0,
+                    )
+                })
+                .collect::<Vec<_>>();
+            self.instances_buffer.write_data(&instances, 0);
+
+            self.tlas.push(TopLevelAccelerationStructure::new(
                 self.device.clone(),
-                &mut self.tlas,
-                &mut self.tlas_buffer,
-                &mut self.tlas_scratch_buffer,
-                &mut self.instances_buffer,
-                &self.blas,
-                &instances,
-                &self.raytracing_properties,
-            );
+                self.raytracing_properties,
+                self.instances_buffer.get_device_address(),
+                MAX_INSTANCE_COUNT as u32,
+            ));
+
             self.tlas[0].generate(
                 &command_buffer,
                 self.tlas_scratch_buffer.get_device_address(),
@@ -928,37 +941,23 @@ impl Renderer {
         tlas_buffer: &mut Buffer,
         tlas_scratch_buffer: &mut Buffer,
         instances_buffer: &mut Buffer,
-        blas: &[BottomLevelAccelerationStructure],
-        instances: &[Instance],
         raytracing_properties: &RaytracingProperties,
     ) {
-        let blas_addressess = blas.iter().map(|b| b.get_address()).collect::<Vec<_>>();
-        let instances = instances
-            .iter()
-            .map(|instance| {
-                TopLevelAccelerationStructure::create_instance(
-                    &device,
-                    &blas[instance.blas_id() as usize],
-                    blas_addressess[instance.blas_id() as usize],
-                    instance.transform(),
-                    instance.id(),
-                    0,
-                )
-            })
-            .collect::<Vec<_>>();
-
-        *instances_buffer = Buffer::with_data(
+        *instances_buffer = Buffer::new(
             device.clone(),
-            &instances,
+            INSTANCE_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        );
+        instances_buffer.allocate_memory(
+            gpu_alloc::UsageFlags::HOST_ACCESS | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
 
         *tlas = vec![TopLevelAccelerationStructure::new(
             device.clone(),
             *raytracing_properties,
             instances_buffer.get_device_address(),
-            instances.len() as u32,
+            MAX_INSTANCE_COUNT as u32,
         )];
 
         let memory_requirements = get_total_memory_requirements(tlas);
@@ -996,7 +995,7 @@ impl Renderer {
         );
     }
 
-    fn create_ouput_images(&mut self) {
+    fn create_output_images(&mut self) {
         let extent = self.swapchain.extent();
         let swap_format = self.swapchain.format();
         let tiling = vk::ImageTiling::OPTIMAL;

@@ -3,7 +3,6 @@ use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::raytracing::acceleration_structure;
 use crate::vulkan::raytracing::acceleration_structure::AccelerationStrutcture;
-use crate::vulkan::raytracing::bottom_level_acceleration_structure::BottomLevelAccelerationStructure;
 use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
 use erupt::vk;
 use glam::Mat4;
@@ -12,12 +11,9 @@ use std::rc::Rc;
 pub struct TopLevelAccelerationStructure {
     handle: vk::AccelerationStructureKHR,
     device: Rc<Device>,
-    instances: vk::AccelerationStructureGeometryInstancesDataKHR,
-    instances_count: u32,
+    max_instance_count: u32,
     top_as_geometry: vk::AccelerationStructureGeometryKHRBuilder<'static>,
-    build_geometry_info: vk::AccelerationStructureBuildGeometryInfoKHR,
     build_sizes_info: vk::AccelerationStructureBuildSizesInfoKHR,
-    raytracing_properties: RaytracingProperties,
 }
 
 impl AccelerationStrutcture for TopLevelAccelerationStructure {
@@ -35,7 +31,7 @@ impl TopLevelAccelerationStructure {
         device: Rc<Device>,
         raytracing_properties: RaytracingProperties,
         instance_address: vk::DeviceAddress,
-        instances_count: u32,
+        max_instance_count: u32,
     ) -> Self {
         let instances = vk::AccelerationStructureGeometryInstancesDataKHRBuilder::new()
             .array_of_pointers(false)
@@ -60,19 +56,16 @@ impl TopLevelAccelerationStructure {
         let build_sizes_info = acceleration_structure::get_acceleration_structure_build_sizes(
             &device,
             &build_geometry_info,
-            &[instances_count],
+            &[max_instance_count],
             &raytracing_properties,
         );
 
         TopLevelAccelerationStructure {
             handle: Default::default(),
             device,
-            instances: instances.build(),
-            instances_count,
+            max_instance_count,
             top_as_geometry,
-            build_geometry_info: build_geometry_info.build(),
             build_sizes_info,
-            raytracing_properties,
         }
     }
 
@@ -106,7 +99,7 @@ impl TopLevelAccelerationStructure {
         };
 
         let build_offset_info = vk::AccelerationStructureBuildRangeInfoKHRBuilder::new()
-            .primitive_count(self.instances_count)
+            .primitive_count(self.max_instance_count)
             .build();
 
         let build_offset_info = &build_offset_info as *const _;
@@ -122,8 +115,6 @@ impl TopLevelAccelerationStructure {
     }
 
     pub fn create_instance(
-        device: &Device,
-        blas: &BottomLevelAccelerationStructure,
         blas_address: u64,
         transform: Mat4,
         instance_id: u32,

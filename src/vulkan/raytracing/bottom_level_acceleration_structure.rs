@@ -13,7 +13,6 @@ pub struct BottomLevelAccelerationStructure {
     device: Rc<Device>,
     geometries: BottomLevelGeometry,
     build_sizes_info: vk::AccelerationStructureBuildSizesInfoKHR,
-    raytracing_properties: RaytracingProperties,
 }
 
 impl AccelerationStrutcture for BottomLevelAccelerationStructure {
@@ -57,7 +56,6 @@ impl BottomLevelAccelerationStructure {
             device,
             geometries,
             build_sizes_info,
-            raytracing_properties,
         }
     }
 

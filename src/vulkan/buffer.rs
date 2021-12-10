@@ -1,6 +1,5 @@
 use crate::vulkan::device::Device;
 use crate::vulkan::device_memory::DeviceMemory;
-use bytemuck::Pod;
 use erupt::vk;
 use std::mem::{size_of, size_of_val};
 use std::rc::Rc;
@@ -46,13 +45,8 @@ impl Buffer {
             gpu_alloc::UsageFlags::HOST_ACCESS | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
 
-        let ptr = buffer.device_memory.as_mut().unwrap().map(0, size as _);
-
-        unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr() as *const u8, ptr.as_ptr(), size as _);
-        }
-
-        buffer.device_memory.as_mut().unwrap().unmap();
+        let mem = buffer.device_memory.as_mut().unwrap();
+        mem.write_data(data, 0);
 
         buffer
     }
@@ -71,11 +65,9 @@ impl Buffer {
         unsafe { self.device.get_buffer_memory_requirements(self.handle) }
     }
 
-    pub fn write_data<T: Pod>(&mut self, data: &[T], offset: u64) {
-        self.device_memory
-            .as_mut()
-            .unwrap()
-            .write_data(data, offset * size_of::<T>() as u64);
+    pub fn write_data<T>(&mut self, data: &[T], offset: u64) {
+        let mem = self.device_memory.as_mut().unwrap();
+        mem.write_data(data, offset * size_of::<T>() as u64);
     }
 
     pub fn get_device_address(&self) -> vk::DeviceAddress {

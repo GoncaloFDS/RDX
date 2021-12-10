@@ -1,4 +1,4 @@
-use glam::{const_mat4, EulerRot, Mat4, Quat, Vec3, Vec4};
+use glam::{const_mat4, vec3, EulerRot, Mat4, Quat, Vec2, Vec3, Vec3Swizzles, Vec4};
 use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode};
 
 // Intermediate transformation that aligns the axes with the expected Vulkan
@@ -37,13 +37,22 @@ impl Camera {
         let view = Mat4::look_at_rh(eye, center, Vec3::Y);
 
         let inverse_view = view.inverse();
-        let (_, orientation, position) = inverse_view.to_scale_rotation_translation();
+        let (_, mut orientation, position) = inverse_view.to_scale_rotation_translation();
 
         let right = inverse_view * Vec4::X;
         let up = inverse_view * Vec4::Y;
         let forward = inverse_view * -Vec4::Z;
 
-        let (pitch, yaw, _) = orientation.to_euler(EulerRot::XYZ);
+        let view_dir = (center - eye).normalize();
+        let a = view_dir.xz().normalize();
+        let b = view_dir.xy().normalize();
+
+        let yaw = a.angle_between(-Vec2::Y);
+        let yaw = if yaw.is_nan() { 0.0 } else { yaw };
+        let pitch = b.angle_between(-Vec2::Y);
+        let pitch = if pitch.is_nan() { 0.0 } else { pitch };
+
+        orientation = Quat::from_rotation_y(yaw) * Quat::from_rotation_x(pitch);
 
         Camera {
             position,
@@ -97,10 +106,9 @@ impl Camera {
 
     pub fn handle_mouse_move(&mut self, x: f32, y: f32, delta_time: f32) {
         if self.mouse_left_pressed {
-            self.yaw += x * self.look_speed * delta_time;
+            self.yaw += -x * self.look_speed * delta_time;
             self.pitch += y * self.look_speed * delta_time;
-            self.orientation = Quat::from_axis_angle(-Vec3::Y, self.yaw)
-                * Quat::from_axis_angle(Vec3::X, self.pitch);
+            self.orientation = Quat::from_rotation_y(self.yaw) * Quat::from_rotation_x(self.pitch);
 
             self.update_vectors();
         }

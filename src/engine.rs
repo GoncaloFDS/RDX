@@ -97,7 +97,7 @@ impl Engine {
             window,
             renderer,
             scene,
-            camera: Camera::new(vec3(0.0, 2.0, 5.0), Vec3::ZERO),
+            camera: Camera::new(vec3(0.0, 2.0, 0.0), vec3(2.0, 0.0, 2.0)),
             input: Default::default(),
             ui,
             world,
@@ -183,7 +183,7 @@ impl Engine {
         puffin::profile_function!();
         self.camera.update_camera(self.time.delta_time());
         self.renderer
-            .update(&self.camera, &self.scene, &mut self.ui, &mut self.world);
+            .update(&self.camera, &mut self.ui, &mut self.world);
         self.renderer.draw_frame();
         self.renderer.present_frame();
         self.time.tick();

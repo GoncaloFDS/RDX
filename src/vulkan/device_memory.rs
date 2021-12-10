@@ -1,9 +1,8 @@
 use crate::vulkan::device::Device;
-use bytemuck::Pod;
 use erupt::vk;
 use gpu_alloc::MemoryBlock;
 use gpu_alloc_erupt::EruptMemoryDevice;
-use std::mem::ManuallyDrop;
+use std::mem::{size_of, size_of_val, ManuallyDrop};
 use std::ptr::NonNull;
 use std::rc::Rc;
 
@@ -52,16 +51,24 @@ impl DeviceMemory {
         }
     }
 
-    pub fn write_data<T: Pod>(&mut self, data: &[T], offset: u64) {
+    pub fn write_data<T>(&mut self, data: &[T], offset: u64) {
         unsafe {
             self.mem_block
                 .write_bytes(
                     EruptMemoryDevice::wrap(&self.device),
                     offset,
-                    bytemuck::cast_slice(data),
+                    cast_slice(data),
                 )
                 .unwrap()
         }
+    }
+
+    pub fn size(&self) -> u64 {
+        self.mem_block.size()
+    }
+
+    pub fn offset(&self) -> u64 {
+        self.mem_block.offset()
     }
 }
 
@@ -71,5 +78,16 @@ impl Drop for DeviceMemory {
             self.device
                 .gpu_dealloc_memory(ManuallyDrop::take(&mut self.mem_block));
         }
+    }
+}
+
+unsafe fn cast_slice<T>(p: &[T]) -> &[u8] {
+    if size_of::<T>() == size_of::<u8>() {
+        std::slice::from_raw_parts(p.as_ptr() as *const u8, p.len())
+    } else if size_of_val(p) % size_of::<u8>() == 0 {
+        let new_len = size_of_val(p) / size_of::<u8>();
+        std::slice::from_raw_parts(p.as_ptr() as *const u8, new_len)
+    } else {
+        panic!("can't cast slice!")
     }
 }
