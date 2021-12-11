@@ -79,8 +79,8 @@ pub struct Renderer {
     sampler: Sampler,
     egui_texture_version: u64,
     draw_indexed: Vec<DrawIndexed>,
-    tlas: Vec<TopLevelAccelerationStructure>,
-    blas: Vec<BottomLevelAccelerationStructure>,
+    top_structures: Vec<TopLevelAccelerationStructure>,
+    bottom_structures: Vec<BottomLevelAccelerationStructure>,
     accumulation_image: Image,
     accumulation_image_view: ImageView,
     output_image: Image,
@@ -88,8 +88,8 @@ pub struct Renderer {
     raytracing_properties: RaytracingProperties,
     blas_buffer: Buffer,
     blas_scratch_buffer: Buffer,
-    tlas_buffer: Buffer,
-    tlas_scratch_buffer: Buffer,
+    top_structures_buffer: Buffer,
+    top_structures_scratch_buffer: Buffer,
     instances_buffer: Buffer,
     shader_binding_table: ShaderBindingTable,
     static_vertex_buffer: Buffer,
@@ -116,8 +116,8 @@ impl Renderer {
         let output_image_view = ImageView::uninitialized(device.clone());
         let blas_buffer = Buffer::uninitialized(device.clone());
         let blas_scratch_buffer = Buffer::uninitialized(device.clone());
-        let tlas_buffer = Buffer::uninitialized(device.clone());
-        let tlas_scratch_buffer = Buffer::uninitialized(device.clone());
+        let top_structures_buffer = Buffer::uninitialized(device.clone());
+        let top_structures_scratch_buffer = Buffer::uninitialized(device.clone());
         let instances_buffer = Buffer::uninitialized(device.clone());
         let shader_binding_table = ShaderBindingTable::uninitialized(device.clone());
         let static_vertex_buffer = Buffer::uninitialized(device.clone());
@@ -154,8 +154,8 @@ impl Renderer {
             sampler,
             egui_texture_version: 0,
             draw_indexed: vec![],
-            tlas: vec![],
-            blas: vec![],
+            top_structures: vec![],
+            bottom_structures: vec![],
             accumulation_image,
             accumulation_image_view,
             output_image,
@@ -163,8 +163,8 @@ impl Renderer {
             raytracing_properties,
             blas_buffer,
             blas_scratch_buffer,
-            tlas_buffer,
-            tlas_scratch_buffer,
+            top_structures_buffer,
+            top_structures_scratch_buffer,
             instances_buffer,
             shader_binding_table,
             static_vertex_buffer,
@@ -235,7 +235,7 @@ impl Renderer {
     }
 
     fn update_descriptor_sets(&mut self) {
-        let tlas = &self.tlas[0];
+        let top_structures = &self.top_structures[0];
         let accumulation_view = &self.accumulation_image_view;
         let output_view = &self.output_image_view;
         let uniform_buffers = &self.uniform_buffers;
@@ -248,9 +248,10 @@ impl Renderer {
             .iter()
             .enumerate()
             .for_each(|(i, _)| {
-                let tlas_handle = [tlas.handle()];
-                let tlas_info = vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
-                    .acceleration_structures(&tlas_handle);
+                let top_structures_handle = [top_structures.handle()];
+                let top_structures_info =
+                    vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
+                        .acceleration_structures(&top_structures_handle);
 
                 let accumulation_image_info = [vk::DescriptorImageInfoBuilder::new()
                     .image_view(accumulation_view.handle())
@@ -290,7 +291,11 @@ impl Renderer {
                     [vk::DescriptorImageInfoBuilder::new().sampler(self.sampler.handle())];
 
                 let descriptor_writes = [
-                    descriptor_set_manager.bind_acceleration_structure(i as u32, 0, &tlas_info),
+                    descriptor_set_manager.bind_acceleration_structure(
+                        i as u32,
+                        0,
+                        &top_structures_info,
+                    ),
                     descriptor_set_manager.bind_image(i as u32, 1, &accumulation_image_info),
                     descriptor_set_manager.bind_image(i as u32, 2, &output_image_info),
                     descriptor_set_manager.bind_buffer(i as u32, 3, &uniform_buffer_info),
@@ -786,7 +791,7 @@ impl Renderer {
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
             Renderer::allocate_blas_buffers(
                 self.device.clone(),
-                &mut self.blas,
+                &mut self.bottom_structures,
                 &mut self.blas_buffer,
                 &mut self.blas_scratch_buffer,
                 &self.static_vertex_buffer,
@@ -795,24 +800,24 @@ impl Renderer {
             );
             Renderer::create_blas(
                 command_buffer,
-                &mut self.blas,
+                &mut self.bottom_structures,
                 &self.blas_scratch_buffer,
                 &self.blas_buffer,
             );
             command_buffer.acceleration_structure_memory_barrier(&self.device);
-            Renderer::allocate_tlas_buffers(
+            Renderer::allocate_top_structures_buffers(
                 self.device.clone(),
-                &mut self.tlas,
-                &mut self.tlas_buffer,
-                &mut self.tlas_scratch_buffer,
+                &mut self.top_structures,
+                &mut self.top_structures_buffer,
+                &mut self.top_structures_scratch_buffer,
                 &mut self.instances_buffer,
                 &self.raytracing_properties,
             );
             Renderer::create_tlas(
                 command_buffer,
-                &mut self.tlas,
-                &self.tlas_scratch_buffer,
-                &self.tlas_buffer,
+                &mut self.top_structures,
+                &self.top_structures_scratch_buffer,
+                &self.top_structures_buffer,
             );
         });
     }
@@ -831,16 +836,23 @@ impl Renderer {
                 )
             })
             .collect::<Vec<_>>();
-        let old = self.tlas.pop().unwrap();
-        self.submit_tlas_update(instances, old);
+        let old = self.top_structures.pop().unwrap();
+        self.submit_top_structures_update(instances, old);
     }
 
-    fn submit_tlas_update(&mut self, instances: Vec<Instance>, old: TopLevelAccelerationStructure) {
+    fn submit_top_structures_update(
+        &mut self,
+        instances: Vec<Instance>,
+        old: TopLevelAccelerationStructure,
+    ) {
         puffin::profile_function!();
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
-            puffin::profile_scope!("tlas update");
-            let blas = &self.blas;
-            let blas_addresses = blas.iter().map(|b| b.get_address()).collect::<Vec<_>>();
+            puffin::profile_scope!("top_structures update");
+            let bottom_structures = &self.bottom_structures;
+            let blas_addresses = bottom_structures
+                .iter()
+                .map(|b| b.get_address())
+                .collect::<Vec<_>>();
             let instances = instances
                 .par_iter()
                 .map(|instance| {
@@ -854,18 +866,18 @@ impl Renderer {
                 .collect::<Vec<_>>();
             self.instances_buffer.write_data(&instances, 0);
 
-            self.tlas.push(TopLevelAccelerationStructure::new(
+            self.top_structures.push(TopLevelAccelerationStructure::new(
                 self.device.clone(),
                 self.raytracing_properties,
                 self.instances_buffer.get_device_address(),
                 MAX_INSTANCE_COUNT as u32,
             ));
 
-            self.tlas[0].generate(
+            self.top_structures[0].generate(
                 &command_buffer,
-                self.tlas_scratch_buffer.get_device_address(),
+                self.top_structures_scratch_buffer.get_device_address(),
                 0,
-                &self.tlas_buffer,
+                &self.top_structures_buffer,
                 0,
                 Some(old.handle()),
             );
@@ -874,26 +886,26 @@ impl Renderer {
 
     fn allocate_blas_buffers(
         device: Rc<Device>,
-        blas: &mut Vec<BottomLevelAccelerationStructure>,
+        bottom_structures: &mut Vec<BottomLevelAccelerationStructure>,
         blas_buffer: &mut Buffer,
         blas_scratch_buffer: &mut Buffer,
         vertex_buffer: &Buffer,
         index_buffer: &Buffer,
         raytracing_properties: &RaytracingProperties,
     ) {
-        blas.clear();
+        bottom_structures.clear();
 
         let mut geometries = BottomLevelGeometry::default();
         // for model in models {
         geometries.add_geometry_triangles(vertex_buffer, index_buffer, 0, 24, 0, 36, true);
 
-        blas.push(BottomLevelAccelerationStructure::new(
+        bottom_structures.push(BottomLevelAccelerationStructure::new(
             device.clone(),
             *raytracing_properties,
             geometries,
         ));
 
-        let memory_requirements = get_total_memory_requirements(blas);
+        let memory_requirements = get_total_memory_requirements(bottom_structures);
 
         *blas_buffer = Buffer::new(
             device.clone(),
@@ -914,14 +926,14 @@ impl Renderer {
 
     fn create_blas(
         command_buffer: CommandBuffer,
-        blas: &mut [BottomLevelAccelerationStructure],
+        bottom_structures: &mut [BottomLevelAccelerationStructure],
         scratch_buffer: &Buffer,
         buffer: &Buffer,
     ) {
         let mut result_offset = 0;
         let mut scratch_offset = 0;
 
-        for b in blas {
+        for b in bottom_structures {
             b.generate(
                 &command_buffer,
                 scratch_buffer,
@@ -935,11 +947,11 @@ impl Renderer {
         }
     }
 
-    fn allocate_tlas_buffers(
+    fn allocate_top_structures_buffers(
         device: Rc<Device>,
-        tlas: &mut Vec<TopLevelAccelerationStructure>,
-        tlas_buffer: &mut Buffer,
-        tlas_scratch_buffer: &mut Buffer,
+        top_structures: &mut Vec<TopLevelAccelerationStructure>,
+        top_structures_buffer: &mut Buffer,
+        top_structures_scratch_buffer: &mut Buffer,
         instances_buffer: &mut Buffer,
         raytracing_properties: &RaytracingProperties,
     ) {
@@ -953,39 +965,39 @@ impl Renderer {
             gpu_alloc::UsageFlags::HOST_ACCESS | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
 
-        *tlas = vec![TopLevelAccelerationStructure::new(
+        *top_structures = vec![TopLevelAccelerationStructure::new(
             device.clone(),
             *raytracing_properties,
             instances_buffer.get_device_address(),
             MAX_INSTANCE_COUNT as u32,
         )];
 
-        let memory_requirements = get_total_memory_requirements(tlas);
+        let memory_requirements = get_total_memory_requirements(top_structures);
 
-        *tlas_buffer = Buffer::new(
+        *top_structures_buffer = Buffer::new(
             device.clone(),
             memory_requirements.acceleration_structure_size,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
         );
-        tlas_buffer.allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
+        top_structures_buffer.allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
 
-        *tlas_scratch_buffer = Buffer::new(
+        *top_structures_scratch_buffer = Buffer::new(
             device.clone(),
             memory_requirements.build_scratch_size,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
         );
-        tlas_scratch_buffer.allocate_memory(gpu_alloc::UsageFlags::DEVICE_ADDRESS);
+        top_structures_scratch_buffer.allocate_memory(gpu_alloc::UsageFlags::DEVICE_ADDRESS);
     }
 
     fn create_tlas(
         command_buffer: CommandBuffer,
-        tlas: &mut [TopLevelAccelerationStructure],
+        top_structures: &mut [TopLevelAccelerationStructure],
         scratch_buffer: &Buffer,
         buffer: &Buffer,
     ) {
-        tlas[0].generate(
+        top_structures[0].generate(
             &command_buffer,
             scratch_buffer.get_device_address(),
             0,

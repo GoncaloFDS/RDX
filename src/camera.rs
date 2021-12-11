@@ -116,9 +116,9 @@ impl Camera {
 
     fn update_vectors(&mut self) {
         let rotation = Mat4::from_quat(self.orientation);
-        self.right = rotation * Vec4::X;
-        self.up = rotation * Vec4::Y;
-        self.forward = rotation * -Vec4::Z;
+        self.right = (rotation * Vec4::X).normalize();
+        self.up = (rotation * Vec4::Y).normalize();
+        self.forward = (rotation * -Vec4::Z).normalize();
     }
 
     pub fn update_camera(&mut self, delta_time: f32) -> bool {

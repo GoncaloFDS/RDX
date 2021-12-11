@@ -182,6 +182,7 @@ impl Engine {
         puffin::GlobalProfiler::lock().new_frame();
         puffin::profile_function!();
         self.camera.update_camera(self.time.delta_time());
+        log::debug!("{}", self.time.delta_time());
         self.renderer
             .update(&self.camera, &mut self.ui, &mut self.world);
         self.renderer.draw_frame();
