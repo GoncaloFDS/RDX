@@ -1,5 +1,5 @@
 use crate::camera::Camera;
-use crate::engine::{Block, Position};
+use crate::engine::{Block, Chunk, ChunkCell, Position};
 use crate::user_interface::UserInterface;
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
@@ -34,6 +34,7 @@ use crate::vulkan::vertex::EguiVertex;
 use erupt::vk;
 use glam::{vec2, vec3, vec4, Mat4};
 use hecs::World;
+use puffin::profile_scope;
 use rayon::prelude::*;
 use std::mem::size_of;
 use std::rc::Rc;
@@ -43,7 +44,7 @@ use winit::window::Window;
 const VERTICES_PER_QUAD: u64 = 4;
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
-const MAX_INSTANCE_COUNT: u64 = 20000;
+const MAX_INSTANCE_COUNT: u64 = 60000;
 const INSTANCE_BUFFER_SIZE: u64 =
     size_of::<vk::AccelerationStructureInstanceKHR>() as u64 * MAX_INSTANCE_COUNT;
 
@@ -824,18 +825,69 @@ impl Renderer {
 
     fn update_acceleration_structures(&mut self, world: &mut World) {
         puffin::profile_function!();
-        let instances = world
-            .query::<(&Position, &Block)>()
-            .iter()
-            .filter(|(_, (_, block))| **block == Block::Grass)
-            .map(|(id, (pos, _block))| {
-                Instance::new(
-                    id.id(),
-                    0,
-                    Mat4::from_translation(vec3(pos.x as f32, pos.y as f32, pos.z as f32)),
-                )
-            })
-            .collect::<Vec<_>>();
+        let mut instances = vec![];
+        world
+            .query::<&Chunk>()
+            .into_iter()
+            .for_each(|(a, (chunk))| {
+                profile_scope!("for eache");
+                for x in 0..32 {
+                    for y in 0..32 {
+                        for z in 0..32 {
+                            let pos = world.get::<Position>(chunk.cells[x][y][z]).unwrap();
+                            let left = if x > 0 {
+                                *world.get::<Block>(chunk.cells[x - 1][y][z]).unwrap()
+                            } else {
+                                Block::Empty
+                            };
+                            let right = if x < 31 {
+                                *world.get::<Block>(chunk.cells[x + 1][y][z]).unwrap()
+                            } else {
+                                Block::Empty
+                            };
+                            let top = if y < 31 {
+                                *world.get::<Block>(chunk.cells[x][y + 1][z]).unwrap()
+                            } else {
+                                Block::Empty
+                            };
+                            let bot = if y > 0 {
+                                *world.get::<Block>(chunk.cells[x][y - 1][z]).unwrap()
+                            } else {
+                                Block::Empty
+                            };
+                            let front = if z < 31 {
+                                *world.get::<Block>(chunk.cells[x][y][z + 1]).unwrap()
+                            } else {
+                                Block::Empty
+                            };
+                            let back = if z > 0 {
+                                *world.get::<Block>(chunk.cells[x][y][z - 1]).unwrap()
+                            } else {
+                                Block::Empty
+                            };
+                            if left == Block::Empty
+                                || right == Block::Empty
+                                || top == Block::Empty
+                                || bot == Block::Empty
+                                || front == Block::Empty
+                                || back == Block::Empty
+                            {
+                                instances.push(Instance::new(
+                                    a.id(),
+                                    0,
+                                    Mat4::from_translation(vec3(
+                                        //(pos.x * chunk.x) as f32,
+                                        (pos.x) as f32,
+                                        pos.y as f32,
+                                        (pos.z) as f32,
+                                        //(pos.z * chunk.y) as f32,
+                                    )),
+                                ));
+                            }
+                        }
+                    }
+                }
+            });
         let old = self.top_structures.pop().unwrap();
         self.submit_top_structures_update(instances, old);
     }

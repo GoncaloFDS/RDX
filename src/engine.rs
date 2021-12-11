@@ -7,7 +7,7 @@ use crate::vulkan::scene::Scene;
 use egui_winit::winit::event::Event;
 use egui_winit::winit::event_loop::ControlFlow;
 use glam::{vec3, Vec3};
-use hecs::World;
+use hecs::{Entity, World};
 use rand::distributions::Standard;
 use rand::prelude::*;
 use std::rc::Rc;
@@ -16,8 +16,9 @@ use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, Win
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Block {
+    Empty,
     Grass,
     Stone,
 }
@@ -26,8 +27,9 @@ impl Distribution<Block> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
         let index = rng.gen_range(0..2);
         match index {
-            0 => Block::Grass,
-            1 => Block::Stone,
+            0 => Block::Empty,
+            1 => Block::Grass,
+            2 => Block::Stone,
             _ => unreachable!(),
         }
     }
@@ -40,6 +42,65 @@ pub struct Position {
     pub z: i32,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct ChunkCell {
+    pub x: i32,
+    pub y: i32,
+}
+
+pub struct Chunk {
+    pub cells: Vec<Vec<Vec<Entity>>>,
+}
+
+fn spawn_entities(world: &mut World) {
+    let mut rng = thread_rng();
+    let mut to_spawn = vec![];
+    for chunk_cell_x in -0..1 {
+        for chunk_cell_y in -0..1 {
+            let chunk_cell = ChunkCell {
+                x: chunk_cell_x,
+                y: chunk_cell_y,
+            };
+            log::debug!("{:?}", chunk_cell);
+            for x in 0..32 {
+                for y in 0..32 {
+                    for z in 0..32 {
+                        // let block: Block = rng.gen();
+                        let block: Block = Block::Grass;
+                        let position = Position { x, y: -y, z };
+                        to_spawn.push((block, position, chunk_cell))
+                    }
+                }
+            }
+        }
+    }
+    let mut entities: Vec<Entity> = world.spawn_batch(to_spawn).collect();
+    let mut entities_iter = entities.iter();
+
+    let mut chunks_to_spawn = vec![];
+    for chunk_cell_x in 0..1 {
+        for chunk_cell_y in 0..1 {
+            let mut cells: Vec<Vec<Vec<Entity>>> = vec![vec![vec![]; 32]; 32];
+            for x in 0..32 {
+                for y in 0..32 {
+                    for z in 0..32 {
+                        cells[x][y].push(*entities_iter.next().unwrap());
+                    }
+                }
+            }
+
+            chunks_to_spawn.push((Chunk { cells },));
+        }
+    }
+    world.spawn_batch(chunks_to_spawn);
+}
+
+fn system_print_entities(world: &mut World) {
+    for (id, (block, pos)) in &mut world.query::<(&Block, &Position)>() {
+        // log::debug!("[{:?}, {:?}, {:?}] = {:?}", pos.x, pos.y, pos.z, block);
+    }
+}
+
 pub struct Engine {
     time: Time,
     window: Rc<Window>,
@@ -49,27 +110,6 @@ pub struct Engine {
     input: Input,
     ui: UserInterface,
     world: World,
-}
-
-fn spawn_entities(world: &mut World) {
-    let mut rng = thread_rng();
-    let mut to_spawn = vec![];
-    for x in 0..32 {
-        for y in -32..0 {
-            for z in 0..32 {
-                let block: Block = rng.gen();
-                let position = Position { x, y, z };
-                to_spawn.push((block, position))
-            }
-        }
-    }
-    world.spawn_batch(to_spawn);
-}
-
-fn system_print_entities(world: &mut World) {
-    for (id, (block, pos)) in &mut world.query::<(&Block, &Position)>() {
-        // log::debug!("[{:?}, {:?}, {:?}] = {:?}", pos.x, pos.y, pos.z, block);
-    }
 }
 
 impl Engine {
@@ -182,7 +222,6 @@ impl Engine {
         puffin::GlobalProfiler::lock().new_frame();
         puffin::profile_function!();
         self.camera.update_camera(self.time.delta_time());
-        log::debug!("{}", self.time.delta_time());
         self.renderer
             .update(&self.camera, &mut self.ui, &mut self.world);
         self.renderer.draw_frame();
