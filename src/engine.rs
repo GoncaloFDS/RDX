@@ -25,7 +25,7 @@ pub enum Block {
 
 impl Distribution<Block> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
-        let index = rng.gen_range(0..2);
+        let index = rng.gen_range(0..3);
         match index {
             0 => Block::Empty,
             1 => Block::Grass,
@@ -35,7 +35,7 @@ impl Distribution<Block> for Standard {
     }
 }
 
-#[derive(Default)]
+#[derive(Copy, Clone, Debug)]
 pub struct Position {
     pub x: i32,
     pub y: i32,
@@ -44,52 +44,59 @@ pub struct Position {
 
 #[derive(Copy, Clone, Debug)]
 pub struct ChunkCell {
+    pub block: Block,
+    pub position: Position,
+}
+
+pub struct Chunk {
+    pub cells: Vec<Vec<Vec<ChunkCell>>>,
     pub x: i32,
     pub y: i32,
 }
 
-pub struct Chunk {
-    pub cells: Vec<Vec<Vec<Entity>>>,
-}
-
 fn spawn_entities(world: &mut World) {
     let mut rng = thread_rng();
-    let mut to_spawn = vec![];
-    for chunk_cell_x in -0..1 {
-        for chunk_cell_y in -0..1 {
-            let chunk_cell = ChunkCell {
+    // let mut to_spawn = vec![];
+    // for chunk_cell_x in -0..1 {
+    //     for chunk_cell_y in -0..1 {
+    //         let chunk_cell = ChunkCell {
+    //             x: chunk_cell_x,
+    //             y: chunk_cell_y,
+    //         };
+    //         log::debug!("{:?}", chunk_cell);
+    //         for x in 0..32 {
+    //             for y in 0..32 {
+    //                 for z in 0..32 {
+    //                     // let block: Block = rng.gen();
+    //                     to_spawn.push((block, position, chunk_cell))
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+    // let mut entities: Vec<Entity> = world.spawn_batch(to_spawn).collect();
+    // let mut entities_iter = entities.iter();
+    //
+    let mut chunks_to_spawn = vec![];
+    for chunk_cell_x in -2..2 {
+        for chunk_cell_y in -2..2 {
+            let mut cells: Vec<Vec<Vec<_>>> = vec![vec![vec![]; 32]; 32];
+            for x in 0..32 {
+                for y in 0..32 {
+                    for z in 0..32 {
+                        let block: Block = Block::Grass;
+                        // let block: Block = rng.gen();
+                        let position = Position { x, y: -y, z };
+                        cells[x as usize][y as usize].push(ChunkCell { block, position });
+                    }
+                }
+            }
+
+            chunks_to_spawn.push((Chunk {
+                cells,
                 x: chunk_cell_x,
                 y: chunk_cell_y,
-            };
-            log::debug!("{:?}", chunk_cell);
-            for x in 0..32 {
-                for y in 0..32 {
-                    for z in 0..32 {
-                        // let block: Block = rng.gen();
-                        let block: Block = Block::Grass;
-                        let position = Position { x, y: -y, z };
-                        to_spawn.push((block, position, chunk_cell))
-                    }
-                }
-            }
-        }
-    }
-    let mut entities: Vec<Entity> = world.spawn_batch(to_spawn).collect();
-    let mut entities_iter = entities.iter();
-
-    let mut chunks_to_spawn = vec![];
-    for chunk_cell_x in 0..1 {
-        for chunk_cell_y in 0..1 {
-            let mut cells: Vec<Vec<Vec<Entity>>> = vec![vec![vec![]; 32]; 32];
-            for x in 0..32 {
-                for y in 0..32 {
-                    for z in 0..32 {
-                        cells[x][y].push(*entities_iter.next().unwrap());
-                    }
-                }
-            }
-
-            chunks_to_spawn.push((Chunk { cells },));
+            },));
         }
     }
     world.spawn_batch(chunks_to_spawn);
