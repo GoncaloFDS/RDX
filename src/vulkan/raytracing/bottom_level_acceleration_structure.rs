@@ -113,7 +113,6 @@ impl BottomLevelAccelerationStructure {
 impl Drop for BottomLevelAccelerationStructure {
     fn drop(&mut self) {
         unsafe {
-            log::debug!("Dropping blas");
             self.device
                 .destroy_acceleration_structure_khr(Some(self.handle()), None);
         }

@@ -83,8 +83,6 @@ impl ShaderBindingTable {
             device.clone(),
             sbt_size as u64,
             vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::TRANSFER_SRC,
-        );
-        buffer.allocate_memory(
             gpu_alloc::UsageFlags::DEVICE_ADDRESS | gpu_alloc::UsageFlags::HOST_ACCESS,
         );
 

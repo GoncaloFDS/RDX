@@ -318,8 +318,8 @@ impl CommandBuffer {
             device.clone(),
             size,
             vk::BufferUsageFlags::TRANSFER_DST | usage,
+            gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
-        buffer.allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
 
         self.copy_buffer(&device, &staging_buffer, &buffer, size);
 

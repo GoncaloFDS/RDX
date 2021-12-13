@@ -1,3 +1,4 @@
+pub mod model;
 pub mod renderer;
 pub mod scene;
 
@@ -17,7 +18,6 @@ mod graphics_pipeline;
 mod image;
 mod image_view;
 mod instance;
-mod model;
 mod pipeline_layout;
 mod raytracing;
 mod render_pass;

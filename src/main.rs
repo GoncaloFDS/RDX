@@ -1,7 +1,9 @@
 use engine::Engine;
 use simple_logger::SimpleLogger;
 
+mod block;
 mod camera;
+mod chunk;
 mod engine;
 mod input;
 mod time;

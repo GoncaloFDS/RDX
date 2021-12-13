@@ -30,8 +30,8 @@ impl TextureImage {
             device.clone(),
             image_size as u64,
             vk::BufferUsageFlags::TRANSFER_SRC,
+            gpu_alloc::UsageFlags::HOST_ACCESS,
         );
-        staging_buffer.allocate_memory(gpu_alloc::UsageFlags::HOST_ACCESS);
         staging_buffer.write_data(texture.pixels(), 0);
 
         let mut image = Image::new(

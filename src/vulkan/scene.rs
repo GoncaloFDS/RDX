@@ -1,4 +1,3 @@
-use crate::vulkan::model::Model;
 use crate::vulkan::texture::Texture;
 use crevice::std430::AsStd430;
 use glam::{vec3, Vec3};
@@ -15,15 +14,12 @@ impl Material {
 }
 
 pub struct Scene {
-    models: Vec<Model>,
     textures: Vec<Texture>,
     materials: Vec<Std430Material>,
 }
 
 impl Scene {
     pub fn new() -> Self {
-        let models = vec![Model::cube()];
-
         let textures = vec![
             Texture::load_texture("resources/textures/grass_side_carried.png"),
             Texture::load_texture("resources/textures/grass_carried.png"),
@@ -37,7 +33,6 @@ impl Scene {
         ];
 
         Scene {
-            models,
             textures,
             materials,
         }
@@ -45,10 +40,6 @@ impl Scene {
 }
 
 impl Scene {
-    pub fn models(&self) -> &[Model] {
-        &self.models
-    }
-
     pub fn textures(&self) -> &[Texture] {
         &self.textures
     }

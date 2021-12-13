@@ -1,4 +1,4 @@
-use glam::{const_mat4, vec3, EulerRot, Mat4, Quat, Vec2, Vec3, Vec3Swizzles, Vec4};
+use glam::{const_mat4, Mat4, Quat, Vec2, Vec3, Vec3Swizzles, Vec4};
 use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode};
 
 // Intermediate transformation that aligns the axes with the expected Vulkan

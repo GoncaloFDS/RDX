@@ -23,25 +23,36 @@ impl Buffer {
         }
     }
 
-    pub fn new(device: Rc<Device>, size: u64, usage: vk::BufferUsageFlags) -> Self {
+    pub fn new(
+        device: Rc<Device>,
+        size: u64,
+        usage: vk::BufferUsageFlags,
+        allocation_flags: gpu_alloc::UsageFlags,
+    ) -> Self {
         let create_info = vk::BufferCreateInfoBuilder::new()
             .size(size)
             .usage(usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
         let buffer = unsafe { device.create_buffer(&create_info, None).unwrap() };
 
-        Buffer {
+        let mut buffer = Buffer {
             device,
             handle: buffer,
             device_memory: None,
-        }
+        };
+
+        buffer.allocate_memory(allocation_flags);
+
+        buffer
     }
 
     pub fn with_data<T>(device: Rc<Device>, data: &[T], usage: vk::BufferUsageFlags) -> Self {
         let size = size_of_val(data) as u64;
 
-        let mut buffer = Buffer::new(device, size, usage);
-        buffer.allocate_memory(
+        let mut buffer = Buffer::new(
+            device,
+            size,
+            usage,
             gpu_alloc::UsageFlags::HOST_ACCESS | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
 
@@ -51,7 +62,7 @@ impl Buffer {
         buffer
     }
 
-    pub fn allocate_memory(&mut self, allocation_flags: gpu_alloc::UsageFlags) {
+    fn allocate_memory(&mut self, allocation_flags: gpu_alloc::UsageFlags) {
         assert!(self.device_memory.is_none());
 
         let mem_reqs = self.get_memory_requirements();

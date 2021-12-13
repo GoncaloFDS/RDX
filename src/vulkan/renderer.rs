@@ -1,5 +1,5 @@
 use crate::camera::Camera;
-use crate::engine::{Block, Chunk, ChunkCell, Position};
+use crate::chunk::Chunk;
 use crate::user_interface::UserInterface;
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
@@ -12,7 +12,7 @@ use crate::vulkan::framebuffer::Framebuffer;
 use crate::vulkan::graphics_pipeline::{GraphicsPipeline, PushConstants};
 use crate::vulkan::image::Image;
 use crate::vulkan::image_view::ImageView;
-use crate::vulkan::model::Instance;
+use crate::vulkan::model::{Instance, Mesh};
 use crate::vulkan::raytracing::acceleration_structure::{
     get_total_memory_requirements, AccelerationStrutcture,
 };
@@ -30,11 +30,10 @@ use crate::vulkan::swapchain::Swapchain;
 use crate::vulkan::texture::Texture;
 use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
-use crate::vulkan::vertex::EguiVertex;
+use crate::vulkan::vertex::{EguiVertex, Std430ModelVertex};
 use erupt::vk;
-use glam::{vec2, vec3, vec4, Mat4};
+use glam::*;
 use hecs::World;
-use puffin::profile_scope;
 use rayon::prelude::*;
 use std::mem::size_of;
 use std::rc::Rc;
@@ -44,7 +43,7 @@ use winit::window::Window;
 const VERTICES_PER_QUAD: u64 = 4;
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
-const MAX_INSTANCE_COUNT: u64 = 600000;
+const MAX_INSTANCE_COUNT: u64 = 256;
 const INSTANCE_BUFFER_SIZE: u64 =
     size_of::<vk::AccelerationStructureInstanceKHR>() as u64 * MAX_INSTANCE_COUNT;
 
@@ -642,8 +641,24 @@ impl Renderer {
         self.device.wait_idle();
     }
 
-    pub fn upload_scene_buffers(&mut self, scene: &Scene) {
+    pub fn upload_scene_buffers(&mut self, scene: &Scene, world: &World) {
         puffin::profile_function!();
+
+        let mut meshes = vec![];
+        world.query::<&Chunk>().iter().for_each(|(id, chunk)| {
+            meshes.push(chunk.compute_chunk_mesh());
+        });
+
+        let vertices = meshes
+            .iter()
+            .fold(vec![], |mut acc: Vec<Std430ModelVertex>, mesh| {
+                acc.extend(mesh.vertices());
+                acc
+            });
+        let indices = meshes.iter().fold(vec![], |mut acc: Vec<u32>, mesh| {
+            acc.extend(mesh.indices());
+            acc
+        });
 
         let mut staging_buffers = vec![];
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
@@ -657,31 +672,27 @@ impl Renderer {
             self.material_buffer = material_buffer;
             staging_buffers.push(staging_material_buffer);
 
-            for model in scene.models() {
-                for mesh in model.meshes() {
-                    let buffer_usage_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                        | vk::BufferUsageFlags::STORAGE_BUFFER
-                        | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
+            let buffer_usage_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                | vk::BufferUsageFlags::STORAGE_BUFFER
+                | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
 
-                    let (index_buffer, staging_index_buffer) = command_buffer
-                        .create_device_local_buffer_with_data::<_>(
-                            self.device.clone(),
-                            vk::BufferUsageFlags::INDEX_BUFFER | buffer_usage_flags,
-                            &mesh.indices(),
-                        );
-                    self.static_index_buffer = index_buffer;
-                    staging_buffers.push(staging_index_buffer);
+            let (index_buffer, staging_index_buffer) = command_buffer
+                .create_device_local_buffer_with_data::<_>(
+                    self.device.clone(),
+                    vk::BufferUsageFlags::INDEX_BUFFER | buffer_usage_flags,
+                    &indices,
+                );
+            self.static_index_buffer = index_buffer;
+            staging_buffers.push(staging_index_buffer);
 
-                    let (vertex_buffer, staging_vertex_buffer) = command_buffer
-                        .create_device_local_buffer_with_data::<_>(
-                            self.device.clone(),
-                            vk::BufferUsageFlags::VERTEX_BUFFER | buffer_usage_flags,
-                            &mesh.vertices(),
-                        );
-                    self.static_vertex_buffer = vertex_buffer;
-                    staging_buffers.push(staging_vertex_buffer);
-                }
-            }
+            let (vertex_buffer, staging_vertex_buffer) = command_buffer
+                .create_device_local_buffer_with_data::<_>(
+                    self.device.clone(),
+                    vk::BufferUsageFlags::VERTEX_BUFFER | buffer_usage_flags,
+                    &vertices,
+                );
+            self.static_vertex_buffer = vertex_buffer;
+            staging_buffers.push(staging_vertex_buffer);
         });
 
         scene.textures().iter().for_each(|texture| {
@@ -689,7 +700,7 @@ impl Renderer {
             self.texture_images.push(texture_image);
         });
 
-        self.create_acceleration_structures();
+        self.create_acceleration_structures(&meshes);
     }
 
     fn create_default_render_pass(&mut self) {
@@ -703,21 +714,17 @@ impl Renderer {
     }
 
     fn allocate_ui_buffers(&mut self) {
-        let mut vertex_buffer = Buffer::new(
+        let vertex_buffer = Buffer::new(
             self.device.clone(),
             VERTEX_BUFFER_SIZE * size_of::<EguiVertex>() as u64,
             vk::BufferUsageFlags::VERTEX_BUFFER,
-        );
-        vertex_buffer.allocate_memory(
             gpu_alloc::UsageFlags::HOST_ACCESS | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
 
-        let mut index_buffer = Buffer::new(
+        let index_buffer = Buffer::new(
             self.device.clone(),
             INDEX_BUFFER_SIZE * size_of::<u32>() as u64,
             vk::BufferUsageFlags::INDEX_BUFFER,
-        );
-        index_buffer.allocate_memory(
             gpu_alloc::UsageFlags::HOST_ACCESS | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
 
@@ -788,7 +795,7 @@ impl Renderer {
             .resize_with(count, || UniformBuffer::new(self.device.clone()));
     }
 
-    fn create_acceleration_structures(&mut self) {
+    fn create_acceleration_structures(&mut self, meshes: &[Mesh]) {
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
             Renderer::allocate_blas_buffers(
                 self.device.clone(),
@@ -798,6 +805,7 @@ impl Renderer {
                 &self.static_vertex_buffer,
                 &self.static_index_buffer,
                 &self.raytracing_properties,
+                meshes,
             );
             Renderer::create_blas(
                 command_buffer,
@@ -826,68 +834,11 @@ impl Renderer {
     fn update_acceleration_structures(&mut self, world: &mut World) {
         puffin::profile_function!();
         let mut instances = vec![];
-        world.query::<&Chunk>().iter_batched(8).for_each(|batch| {
-            profile_scope!("for each");
-            batch.for_each(|(id, chunk)| {
-                for x in 0..32 {
-                    for y in 0..32 {
-                        for z in 0..32 {
-                            unsafe {
-                                let pos = chunk.cells[x][y][z].position;
-                                let left = if x > 0 {
-                                    chunk.cells[x - 1][y][z].block
-                                } else {
-                                    Block::Empty
-                                };
-                                let right = if x < 31 {
-                                    chunk.cells[x + 1][y][z].block
-                                } else {
-                                    Block::Empty
-                                };
-                                let top = if y < 31 {
-                                    chunk.cells[x][y + 1][z].block
-                                } else {
-                                    Block::Empty
-                                };
-                                let bot = if y > 0 {
-                                    chunk.cells[x][y - 1][z].block
-                                } else {
-                                    Block::Empty
-                                };
-                                let front = if z < 31 {
-                                    chunk.cells[x][y][z + 1].block
-                                } else {
-                                    Block::Empty
-                                };
-                                let back = if z > 0 {
-                                    chunk.cells[x][y][z - 1].block
-                                } else {
-                                    Block::Empty
-                                };
-                                if left == Block::Empty
-                                    || right == Block::Empty
-                                    || top == Block::Empty
-                                    || bot == Block::Empty
-                                    || front == Block::Empty
-                                    || back == Block::Empty
-                                {
-                                    instances.push(Instance::new(
-                                        0,
-                                        0,
-                                        Mat4::from_translation(vec3(
-                                            (pos.x + 32 * chunk.x) as f32,
-                                            pos.y as f32,
-                                            (pos.z + 32 * chunk.y) as f32,
-                                        )),
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                }
-            });
+        world.query::<&Chunk>().iter().for_each(|(id, chunk)| {
+            puffin::profile_scope!("inner query");
+            let instance = Instance::new(id.id(), id.id() as u32, chunk.transform());
+            instances.push(instance)
         });
-        // log::debug!("instances: {}", instances.len());
         let old = self.top_structures.pop().unwrap();
         self.submit_top_structures_update(instances, old);
     }
@@ -944,18 +895,35 @@ impl Renderer {
         vertex_buffer: &Buffer,
         index_buffer: &Buffer,
         raytracing_properties: &RaytracingProperties,
+        meshes: &[Mesh],
     ) {
         bottom_structures.clear();
 
-        let mut geometries = BottomLevelGeometry::default();
-        // for model in models {
-        geometries.add_geometry_triangles(vertex_buffer, index_buffer, 0, 24, 0, 36, true);
+        let mut vertex_offset = 0;
+        let mut index_offset = 0;
+        for mesh in meshes {
+            let vertices_count = mesh.vertices().len() as u32;
+            let indices_count = mesh.indices().len() as u32;
+            let mut geometries = BottomLevelGeometry::default();
+            geometries.add_geometry_triangles(
+                vertex_buffer,
+                index_buffer,
+                vertex_offset,
+                vertices_count,
+                index_offset,
+                indices_count,
+                true,
+            );
 
-        bottom_structures.push(BottomLevelAccelerationStructure::new(
-            device.clone(),
-            *raytracing_properties,
-            geometries,
-        ));
+            vertex_offset += vertices_count * size_of::<Std430ModelVertex>() as u32;
+            index_offset += indices_count * size_of::<u32>() as u32;
+
+            bottom_structures.push(BottomLevelAccelerationStructure::new(
+                device.clone(),
+                *raytracing_properties,
+                geometries,
+            ));
+        }
 
         let memory_requirements = get_total_memory_requirements(bottom_structures);
 
@@ -963,8 +931,8 @@ impl Renderer {
             device.clone(),
             memory_requirements.acceleration_structure_size,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
+            gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
-        blas_buffer.allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
 
         *blas_scratch_buffer = Buffer::new(
             device,
@@ -972,8 +940,8 @@ impl Renderer {
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
+            gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
-        blas_scratch_buffer.allocate_memory(gpu_alloc::UsageFlags::DEVICE_ADDRESS);
     }
 
     fn create_blas(
@@ -985,8 +953,8 @@ impl Renderer {
         let mut result_offset = 0;
         let mut scratch_offset = 0;
 
-        for b in bottom_structures {
-            b.generate(
+        for blas in bottom_structures {
+            blas.generate(
                 &command_buffer,
                 scratch_buffer,
                 scratch_offset,
@@ -994,8 +962,8 @@ impl Renderer {
                 result_offset,
             );
 
-            result_offset += b.build_sizes().acceleration_structure_size;
-            scratch_offset += b.build_sizes().build_scratch_size;
+            result_offset += blas.build_sizes().acceleration_structure_size;
+            scratch_offset += blas.build_sizes().build_scratch_size;
         }
     }
 
@@ -1012,8 +980,6 @@ impl Renderer {
             INSTANCE_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        );
-        instances_buffer.allocate_memory(
             gpu_alloc::UsageFlags::HOST_ACCESS | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
 
@@ -1030,8 +996,8 @@ impl Renderer {
             device.clone(),
             memory_requirements.acceleration_structure_size,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
+            gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
-        top_structures_buffer.allocate_memory(gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS);
 
         *top_structures_scratch_buffer = Buffer::new(
             device.clone(),
@@ -1039,8 +1005,8 @@ impl Renderer {
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
+            gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
-        top_structures_scratch_buffer.allocate_memory(gpu_alloc::UsageFlags::DEVICE_ADDRESS);
     }
 
     fn create_tlas(
