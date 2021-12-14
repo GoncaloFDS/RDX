@@ -78,16 +78,3 @@ impl BlockTextureNames {
         self.bottom.clone()
     }
 }
-
-#[derive(Debug)]
-pub struct BlockTextures {
-    pub side: Option<u32>,
-    pub top: Option<u32>,
-    pub bottom: Option<u32>,
-}
-
-impl BlockTextures {
-    pub fn new(side: Option<u32>, top: Option<u32>, bottom: Option<u32>) -> Self {
-        BlockTextures { side, top, bottom }
-    }
-}

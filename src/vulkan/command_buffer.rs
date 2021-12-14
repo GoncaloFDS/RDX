@@ -314,7 +314,7 @@ impl CommandBuffer {
         let size = size_of_val(data) as u64;
         let staging_buffer =
             Buffer::with_data(device.clone(), data, vk::BufferUsageFlags::TRANSFER_SRC);
-        let mut buffer = Buffer::new(
+        let buffer = Buffer::new(
             device.clone(),
             size,
             vk::BufferUsageFlags::TRANSFER_DST | usage,

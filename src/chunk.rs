@@ -97,7 +97,6 @@ impl Chunk {
 
             if neighbour_block != Block::Empty && !neighbour_block.is_solid() {
                 if block == Block::Water {
-                    //todo!()
                 } else {
                     let block_uvs = scene.get_block_uvs(block);
                     mesh.add_quad(*dir, position, block, block_uvs);

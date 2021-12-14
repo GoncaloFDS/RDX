@@ -31,7 +31,6 @@ use crate::vulkan::texture::Texture;
 use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::{EguiVertex, Std430ModelVertex};
-use crevice::std430::Std430;
 use erupt::vk;
 use glam::*;
 use hecs::World;
@@ -44,7 +43,7 @@ use winit::window::Window;
 const VERTICES_PER_QUAD: u64 = 4;
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
-const MAX_INSTANCE_COUNT: u64 = 256;
+const MAX_INSTANCE_COUNT: u64 = 2048;
 const INSTANCE_BUFFER_SIZE: u64 =
     size_of::<vk::AccelerationStructureInstanceKHR>() as u64 * MAX_INSTANCE_COUNT;
 
@@ -272,10 +271,17 @@ impl Renderer {
     pub fn upload_scene_buffers(&mut self, scene: &Scene, world: &World) {
         puffin::profile_function!();
 
-        let mut meshes = vec![];
-        world.query::<&Chunk>().iter().for_each(|(id, chunk)| {
-            meshes.push(chunk.compute_chunk_mesh(scene));
-        });
+        let meshes = world
+            .query::<&Chunk>()
+            .iter_batched(16)
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .flat_map(|batch| {
+                batch
+                    .map(|(_, chunk)| chunk.compute_chunk_mesh(scene))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
 
         let mut vertex_offset = 0;
         let mut index_offset = 0;
@@ -866,12 +872,17 @@ impl Renderer {
 
     fn update_acceleration_structures(&mut self, world: &mut World) {
         puffin::profile_function!();
-        let mut instances = vec![];
-        world.query::<&Chunk>().iter().for_each(|(id, chunk)| {
-            puffin::profile_scope!("inner query");
-            let instance = Instance::new(id.id(), id.id() as u32, chunk.transform());
-            instances.push(instance)
-        });
+        let instances = world
+            .query::<&Chunk>()
+            .iter_batched(16)
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .flat_map(|batch| {
+                batch
+                    .map(|(id, chunk)| Instance::new(id.id(), id.id() as u32, chunk.transform()))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
         let old = self.top_structures.pop().unwrap();
         self.submit_top_structures_update(instances, old);
     }

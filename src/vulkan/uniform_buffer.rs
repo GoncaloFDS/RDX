@@ -25,7 +25,7 @@ impl UniformBuffer {
 
     pub fn new(device: Rc<Device>) -> Self {
         let buffer_size = size_of::<Std430UniformBufferObject>();
-        let mut buffer = Buffer::new(
+        let buffer = Buffer::new(
             device,
             buffer_size as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,

@@ -1,9 +1,8 @@
-use crate::block::{Block, BlockTextures};
+use crate::block::Block;
 use crate::vulkan::texture::Texture;
 use crevice::std430::AsStd430;
 use glam::{vec2, vec3, Vec2, Vec3};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::File;
 use strum::IntoEnumIterator;
@@ -168,7 +167,7 @@ impl Scene {
     pub fn new() -> Self {
         let textures = vec![Texture::load_texture("resources/textures/blocks.png")];
 
-        let mut frames_file = File::open("resources/textures/blocks.json").unwrap();
+        let frames_file = File::open("resources/textures/blocks.json").unwrap();
         let texture_atlas: TextureAtlas = serde_json::from_reader(frames_file).unwrap();
 
         let mut uvs = HashMap::new();
@@ -177,8 +176,6 @@ impl Scene {
             let block_uvs = get_uvs(block, &texture_atlas);
             uvs.insert(block, block_uvs);
         }
-
-        log::debug!("uvs: {:?}", uvs);
 
         let materials = vec![
             Material::new(vec3(1.0, 0.0, 0.0)).as_std430(),

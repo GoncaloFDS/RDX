@@ -1,5 +1,5 @@
 use crate::block::{Block, Sides};
-use crate::vulkan::scene::{BlockUVs, Coords};
+use crate::vulkan::scene::BlockUVs;
 use crate::vulkan::vertex::{ModelVertex, Std430ModelVertex};
 use crevice::std430::AsStd430;
 use glam::*;
@@ -106,7 +106,6 @@ impl Mesh {
         block: Block,
         block_uvs: BlockUVs,
     ) {
-        puffin::profile_function!();
         let x = position.x as f32;
         let y = position.y as f32;
         let z = position.z as f32;
