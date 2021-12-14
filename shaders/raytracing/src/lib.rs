@@ -65,7 +65,6 @@ pub fn closest_hit(
 ) {
     let id = id as usize;
     let offsets = &offsets[index as usize];
-    // let (vertex_offset, index_offset) = (offsets.vertex as usize, offsets.index as usize);
     let (vertex_offset, index_offset) = (offsets.0 as usize, offsets.1 as usize);
     let indices = (
         indices[index_offset + id * 3] as usize,

@@ -176,34 +176,9 @@ impl Renderer {
         }
     }
 
-    fn create(&mut self, window: &Window) {
-        self.create_swapchain(window);
-        self.create_depth_buffer(window);
-        self.create_default_render_pass();
-        self.create_uniform_buffers();
-        self.create_output_images();
-        self.create_pipelines();
-        self.create_shader_binding_table();
-        self.create_framebuffers();
-        self.create_command_buffers();
-        self.create_sync_structures();
-    }
-
     pub fn setup(&mut self, window: &Window) {
         self.create(window);
         self.allocate_ui_buffers();
-    }
-
-    fn reset(&mut self) {
-        self.command_pool.reset();
-        self.swapchain = Swapchain::uninitialized(self.device.clone());
-        self.uniform_buffers.clear();
-        self.framebuffers.clear();
-        self.present_semaphores.clear();
-        self.render_semaphores.clear();
-        self.fences.clear();
-        self.egui_texture_version = 0;
-        self.current_frame = 0;
     }
 
     pub fn recreate(&mut self, window: &Window) {
@@ -236,6 +211,172 @@ impl Renderer {
 
         self.update_acceleration_structures(world);
         self.update_descriptor_sets();
+    }
+
+    pub fn draw_frame(&mut self) {
+        puffin::profile_function!();
+        self.fences[self.current_frame].wait(u64::MAX);
+
+        match self.get_current_frame() {
+            None => {
+                log::debug!("failed to acquire next swapchain image");
+                return;
+            }
+            Some(current_frame) => self.current_frame = current_frame,
+        };
+
+        let command_buffer = self.command_pool.begin(self.current_frame as _);
+
+        self.raytrace(command_buffer);
+
+        command_buffer.begin_render_pass(
+            &self.device,
+            self.render_pass.handle(),
+            self.framebuffers[self.current_frame].handle(),
+            self.swapchain.extent(),
+        );
+
+        // self.render(command_buffer);
+        self.render_ui(command_buffer);
+
+        command_buffer.end_render_pass(&self.device);
+        command_buffer.end(&self.device);
+
+        self.fences[self.current_frame].reset();
+
+        self.device.submit(
+            &[command_buffer.handle()],
+            &[self.render_semaphores[self.current_frame].handle()],
+            &[self.present_semaphores[self.current_frame].handle()],
+            &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+            Some(self.fences[self.current_frame].handle()),
+        );
+    }
+
+    pub fn present_frame(&mut self) {
+        let present_semaphore = &self.present_semaphores[self.current_frame];
+        let swapchain = &self.swapchain;
+        self.device.present(
+            &[present_semaphore.handle()],
+            &[swapchain.handle()],
+            &[self.current_frame as u32],
+        );
+
+        self.current_frame = (self.current_frame + 1) % self.fences.len();
+    }
+
+    pub fn shutdown(&self) {
+        self.device.wait_idle();
+    }
+
+    pub fn upload_scene_buffers(&mut self, scene: &Scene, world: &World) {
+        puffin::profile_function!();
+
+        let mut meshes = vec![];
+        world.query::<&Chunk>().iter().for_each(|(id, chunk)| {
+            meshes.push(chunk.compute_chunk_mesh(id.id()));
+        });
+
+        let mut vertex_offset = 0;
+        let mut index_offset = 0;
+        let offsets = meshes
+            .iter()
+            .map(|mesh| {
+                let offsets = (vertex_offset, index_offset);
+                vertex_offset += mesh.vertices().len() as u32;
+                index_offset += mesh.indices().len() as u32;
+                offsets
+            })
+            .collect::<Vec<_>>();
+
+        let vertices = meshes
+            .iter()
+            .fold(vec![], |mut acc: Vec<Std430ModelVertex>, mesh| {
+                acc.extend(mesh.vertices());
+                acc
+            });
+        let indices = meshes.iter().fold(vec![], |mut acc: Vec<u32>, mesh| {
+            acc.extend(mesh.indices());
+            acc
+        });
+
+        let mut staging_buffers = vec![];
+        CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
+            let (material_buffer, staging_material_buffer) = command_buffer
+                .create_device_local_buffer_with_data(
+                    self.device.clone(),
+                    vk::BufferUsageFlags::STORAGE_BUFFER
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    &scene.materials(),
+                );
+            self.material_buffer = material_buffer;
+            staging_buffers.push(staging_material_buffer);
+
+            let buffer_usage_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                | vk::BufferUsageFlags::STORAGE_BUFFER
+                | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
+
+            let (index_buffer, staging_index_buffer) = command_buffer
+                .create_device_local_buffer_with_data(
+                    self.device.clone(),
+                    vk::BufferUsageFlags::INDEX_BUFFER | buffer_usage_flags,
+                    &indices,
+                );
+            self.static_index_buffer = index_buffer;
+            staging_buffers.push(staging_index_buffer);
+
+            let (vertex_buffer, staging_vertex_buffer) = command_buffer
+                .create_device_local_buffer_with_data(
+                    self.device.clone(),
+                    vk::BufferUsageFlags::VERTEX_BUFFER | buffer_usage_flags,
+                    &vertices,
+                );
+            self.static_vertex_buffer = vertex_buffer;
+            staging_buffers.push(staging_vertex_buffer);
+
+            let (offset_buffer, staging_offset_buffer) = command_buffer
+                .create_device_local_buffer_with_data(
+                    self.device.clone(),
+                    vk::BufferUsageFlags::STORAGE_BUFFER | buffer_usage_flags,
+                    &offsets,
+                );
+            self.static_offset_buffer = offset_buffer;
+            staging_buffers.push(staging_offset_buffer);
+        });
+
+        scene.textures().iter().for_each(|texture| {
+            let texture_image = TextureImage::new(self.device.clone(), &self.command_pool, texture);
+            self.texture_images.push(texture_image);
+        });
+
+        self.create_acceleration_structures(&meshes);
+    }
+}
+
+impl Renderer {
+    fn create(&mut self, window: &Window) {
+        self.create_swapchain(window);
+        self.create_depth_buffer(window);
+        self.create_default_render_pass();
+        self.create_uniform_buffers();
+        self.create_output_images();
+        self.create_pipelines();
+        self.create_shader_binding_table();
+        self.create_framebuffers();
+        self.create_command_buffers();
+        self.create_sync_structures();
+    }
+
+    fn reset(&mut self) {
+        self.command_pool.reset();
+        self.swapchain = Swapchain::uninitialized(self.device.clone());
+        self.uniform_buffers.clear();
+        self.framebuffers.clear();
+        self.present_semaphores.clear();
+        self.render_semaphores.clear();
+        self.fences.clear();
+        self.egui_texture_version = 0;
+        self.current_frame = 0;
     }
 
     fn update_descriptor_sets(&mut self) {
@@ -396,63 +537,11 @@ impl Renderer {
             });
     }
 
-    pub fn draw_frame(&mut self) {
-        puffin::profile_function!();
-        self.fences[self.current_frame].wait(u64::MAX);
-
-        match self.get_current_frame() {
-            None => {
-                log::debug!("failed to acquire next swapchain image");
-                return;
-            }
-            Some(current_frame) => self.current_frame = current_frame,
-        };
-
-        let command_buffer = self.command_pool.begin(self.current_frame as _);
-
-        self.raytrace(command_buffer);
-
-        command_buffer.begin_render_pass(
-            &self.device,
-            self.render_pass.handle(),
-            self.framebuffers[self.current_frame].handle(),
-            self.swapchain.extent(),
-        );
-
-        // self.render(command_buffer);
-        self.render_ui(command_buffer);
-
-        command_buffer.end_render_pass(&self.device);
-        command_buffer.end(&self.device);
-
-        self.fences[self.current_frame].reset();
-
-        self.device.submit(
-            &[command_buffer.handle()],
-            &[self.render_semaphores[self.current_frame].handle()],
-            &[self.present_semaphores[self.current_frame].handle()],
-            &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
-            Some(self.fences[self.current_frame].handle()),
-        );
-    }
-
     fn get_current_frame(&self) -> Option<usize> {
         self.swapchain.acquire_next_image(
             u64::MAX,
             Some(self.render_semaphores[self.current_frame].handle()),
         )
-    }
-
-    pub fn present_frame(&mut self) {
-        let present_semaphore = &self.present_semaphores[self.current_frame];
-        let swapchain = &self.swapchain;
-        self.device.present(
-            &[present_semaphore.handle()],
-            &[swapchain.handle()],
-            &[self.current_frame as u32],
-        );
-
-        self.current_frame = (self.current_frame + 1) % self.fences.len();
     }
 
     fn render(&self, command_buffer: CommandBuffer) {
@@ -645,94 +734,6 @@ impl Renderer {
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             vk::ImageLayout::PRESENT_SRC_KHR,
         );
-    }
-
-    pub fn shutdown(&self) {
-        self.device.wait_idle();
-    }
-
-    pub fn upload_scene_buffers(&mut self, scene: &Scene, world: &World) {
-        puffin::profile_function!();
-
-        let mut meshes = vec![];
-        world.query::<&Chunk>().iter().for_each(|(id, chunk)| {
-            meshes.push(chunk.compute_chunk_mesh(id.id()));
-        });
-
-        let mut vertex_offset = 0;
-        let mut index_offset = 0;
-        let offsets = meshes
-            .iter()
-            .map(|mesh| {
-                // let offsets = Offsets::new(vertex_offset, index_offset).as_std430();
-                let offsets = (vertex_offset, index_offset);
-                vertex_offset += mesh.vertices().len() as u32;
-                index_offset += mesh.indices().len() as u32;
-                offsets
-            })
-            .collect::<Vec<_>>();
-
-        let vertices = meshes
-            .iter()
-            .fold(vec![], |mut acc: Vec<Std430ModelVertex>, mesh| {
-                acc.extend(mesh.vertices());
-                acc
-            });
-        let indices = meshes.iter().fold(vec![], |mut acc: Vec<u32>, mesh| {
-            acc.extend(mesh.indices());
-            acc
-        });
-
-        let mut staging_buffers = vec![];
-        CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
-            let (material_buffer, staging_material_buffer) = command_buffer
-                .create_device_local_buffer_with_data(
-                    self.device.clone(),
-                    vk::BufferUsageFlags::STORAGE_BUFFER
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                    &scene.materials(),
-                );
-            self.material_buffer = material_buffer;
-            staging_buffers.push(staging_material_buffer);
-
-            let buffer_usage_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                | vk::BufferUsageFlags::STORAGE_BUFFER
-                | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
-
-            let (index_buffer, staging_index_buffer) = command_buffer
-                .create_device_local_buffer_with_data(
-                    self.device.clone(),
-                    vk::BufferUsageFlags::INDEX_BUFFER | buffer_usage_flags,
-                    &indices,
-                );
-            self.static_index_buffer = index_buffer;
-            staging_buffers.push(staging_index_buffer);
-
-            let (vertex_buffer, staging_vertex_buffer) = command_buffer
-                .create_device_local_buffer_with_data(
-                    self.device.clone(),
-                    vk::BufferUsageFlags::VERTEX_BUFFER | buffer_usage_flags,
-                    &vertices,
-                );
-            self.static_vertex_buffer = vertex_buffer;
-            staging_buffers.push(staging_vertex_buffer);
-
-            let (offset_buffer, staging_offset_buffer) = command_buffer
-                .create_device_local_buffer_with_data(
-                    self.device.clone(),
-                    vk::BufferUsageFlags::STORAGE_BUFFER | buffer_usage_flags,
-                    &offsets,
-                );
-            self.static_offset_buffer = offset_buffer;
-            staging_buffers.push(staging_offset_buffer);
-        });
-
-        scene.textures().iter().for_each(|texture| {
-            let texture_image = TextureImage::new(self.device.clone(), &self.command_pool, texture);
-            self.texture_images.push(texture_image);
-        });
-
-        self.create_acceleration_structures(&meshes);
     }
 
     fn create_default_render_pass(&mut self) {
