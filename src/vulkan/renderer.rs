@@ -274,7 +274,7 @@ impl Renderer {
 
         let mut meshes = vec![];
         world.query::<&Chunk>().iter().for_each(|(id, chunk)| {
-            meshes.push(chunk.compute_chunk_mesh(id.id()));
+            meshes.push(chunk.compute_chunk_mesh(scene));
         });
 
         let mut vertex_offset = 0;

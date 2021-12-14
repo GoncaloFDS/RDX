@@ -1,5 +1,6 @@
 use crate::block::Block;
 use crate::vulkan::model::{Mesh, DIRECTIONS};
+use crate::vulkan::scene::Scene;
 use bracket_noise::prelude::*;
 use glam::{ivec3, vec3, IVec3, Mat4};
 
@@ -25,10 +26,11 @@ impl Chunk {
         chunk
     }
 
-    pub fn compute_chunk_mesh(&self, chunk_id: u32) -> Mesh {
-        let mut mesh = Mesh::new(chunk_id);
+    pub fn compute_chunk_mesh(&self, scene: &Scene) -> Mesh {
+        let mut mesh = Mesh::default();
         self.blocks.iter().enumerate().for_each(|(index, &block)| {
             self.update_mesh(
+                scene,
                 Chunk::get_position_from_index(index as i32),
                 &mut mesh,
                 block,
@@ -83,7 +85,7 @@ impl Chunk {
         )
     }
 
-    fn update_mesh(&self, position: IVec3, mesh: &mut Mesh, block: Block) {
+    fn update_mesh(&self, scene: &Scene, position: IVec3, mesh: &mut Mesh, block: Block) {
         if block == Block::Empty || block == Block::Air {
             return;
         }
@@ -93,11 +95,12 @@ impl Chunk {
             let neighbour_block =
                 self.get_block_from_chunk_coordinates(neighbour_block_coordinates);
 
+            let texture_coords = scene.get_texture_coords(block);
             if neighbour_block != Block::Empty && !neighbour_block.is_solid() {
                 if block == Block::Water {
                     //todo!()
                 } else {
-                    mesh.add_quad(*dir, position, block);
+                    mesh.add_quad(*dir, position, block, texture_coords);
                 }
             }
         });

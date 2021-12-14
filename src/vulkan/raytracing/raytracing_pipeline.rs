@@ -112,7 +112,7 @@ impl RaytracingPipeline {
             // Textures
             DescriptorBinding::new(
                 8,
-                3,
+                1,
                 vk::DescriptorType::SAMPLED_IMAGE,
                 vk::ShaderStageFlags::CLOSEST_HIT_KHR,
             ),

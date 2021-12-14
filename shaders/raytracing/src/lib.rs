@@ -84,16 +84,8 @@ pub fn closest_hit(
         sampler: *sampler,
         uv,
     };
-    // let tex = texture_sampler.sample(v0.side);
-    let tex = match v0.side {
-        0 => vec4(0.0, 0.0, 0.0, 1.0),
-        1 => vec4(0.1, 0.8, 0.1, 1.0),
-        2 => vec4(0.9, 0.2, 0.2, 1.0),
-        3 => vec4(0.2, 0.2, 0.2, 1.0),
-        4 => vec4(0.1, 0.1, 0.7, 1.0),
-        5 => vec4(0.9, 0.9, 0.9, 1.0),
-        _ => vec4(0.0, 0.0, 0.0, 1.0),
-    };
+
+    let tex = texture_sampler.sample(0);
 
     *out = tex.truncate();
 }
