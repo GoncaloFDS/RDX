@@ -103,15 +103,21 @@ impl RaytracingPipeline {
                 vk::DescriptorType::STORAGE_BUFFER,
                 vk::ShaderStageFlags::CLOSEST_HIT_KHR,
             ),
-            // Textures
             DescriptorBinding::new(
                 7,
+                1,
+                vk::DescriptorType::STORAGE_BUFFER,
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+            ),
+            // Textures
+            DescriptorBinding::new(
+                8,
                 3,
                 vk::DescriptorType::SAMPLED_IMAGE,
                 vk::ShaderStageFlags::CLOSEST_HIT_KHR,
             ),
             DescriptorBinding::new(
-                8,
+                9,
                 1,
                 vk::DescriptorType::SAMPLER,
                 vk::ShaderStageFlags::CLOSEST_HIT_KHR,

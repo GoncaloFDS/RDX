@@ -31,6 +31,7 @@ use crate::vulkan::texture::Texture;
 use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::{EguiVertex, Std430ModelVertex};
+use crevice::std430::Std430;
 use erupt::vk;
 use glam::*;
 use hecs::World;
@@ -94,6 +95,7 @@ pub struct Renderer {
     shader_binding_table: ShaderBindingTable,
     static_vertex_buffer: Buffer,
     static_index_buffer: Buffer,
+    static_offset_buffer: Buffer,
 }
 
 impl Renderer {
@@ -122,6 +124,7 @@ impl Renderer {
         let shader_binding_table = ShaderBindingTable::uninitialized(device.clone());
         let static_vertex_buffer = Buffer::uninitialized(device.clone());
         let static_index_buffer = Buffer::uninitialized(device.clone());
+        let static_offset_buffer = Buffer::uninitialized(device.clone());
         let material_buffer = Buffer::uninitialized(device.clone());
         let egui_texture = Texture::default();
         let egui_texture_image = TextureImage::uninitialized(device.clone());
@@ -169,6 +172,7 @@ impl Renderer {
             shader_binding_table,
             static_vertex_buffer,
             static_index_buffer,
+            static_offset_buffer,
         }
     }
 
@@ -241,6 +245,7 @@ impl Renderer {
         let uniform_buffers = &self.uniform_buffers;
         let vertex_buffer = &self.static_vertex_buffer;
         let index_buffer = &self.static_index_buffer;
+        let offset_buffer = &self.static_offset_buffer;
         let material_buffer = &self.material_buffer;
         let descriptor_set_manager = self.raytracing_pipeline.descriptor_set_manager();
         self.swapchain
@@ -273,6 +278,10 @@ impl Renderer {
                     .buffer(index_buffer.handle())
                     .range(vk::WHOLE_SIZE)];
 
+                let offset_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+                    .buffer(offset_buffer.handle())
+                    .range(vk::WHOLE_SIZE)];
+
                 let material_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
                     .buffer(material_buffer.handle())
                     .range(vk::WHOLE_SIZE)];
@@ -302,8 +311,9 @@ impl Renderer {
                     descriptor_set_manager.bind_buffer(i as u32, 4, &vertex_buffer_info),
                     descriptor_set_manager.bind_buffer(i as u32, 5, &index_buffer_info),
                     descriptor_set_manager.bind_buffer(i as u32, 6, &material_buffer_info),
-                    descriptor_set_manager.bind_image(i as u32, 7, &image_infos),
-                    descriptor_set_manager.bind_image(i as u32, 8, &sampler_info),
+                    descriptor_set_manager.bind_buffer(i as u32, 7, &offset_buffer_info),
+                    descriptor_set_manager.bind_image(i as u32, 8, &image_infos),
+                    descriptor_set_manager.bind_image(i as u32, 9, &sampler_info),
                 ];
 
                 descriptor_set_manager.update_descriptors(&descriptor_writes);
@@ -646,8 +656,21 @@ impl Renderer {
 
         let mut meshes = vec![];
         world.query::<&Chunk>().iter().for_each(|(id, chunk)| {
-            meshes.push(chunk.compute_chunk_mesh());
+            meshes.push(chunk.compute_chunk_mesh(id.id()));
         });
+
+        let mut vertex_offset = 0;
+        let mut index_offset = 0;
+        let offsets = meshes
+            .iter()
+            .map(|mesh| {
+                // let offsets = Offsets::new(vertex_offset, index_offset).as_std430();
+                let offsets = (vertex_offset, index_offset);
+                vertex_offset += mesh.vertices().len() as u32;
+                index_offset += mesh.indices().len() as u32;
+                offsets
+            })
+            .collect::<Vec<_>>();
 
         let vertices = meshes
             .iter()
@@ -663,7 +686,7 @@ impl Renderer {
         let mut staging_buffers = vec![];
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
             let (material_buffer, staging_material_buffer) = command_buffer
-                .create_device_local_buffer_with_data::<_>(
+                .create_device_local_buffer_with_data(
                     self.device.clone(),
                     vk::BufferUsageFlags::STORAGE_BUFFER
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -677,7 +700,7 @@ impl Renderer {
                 | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
 
             let (index_buffer, staging_index_buffer) = command_buffer
-                .create_device_local_buffer_with_data::<_>(
+                .create_device_local_buffer_with_data(
                     self.device.clone(),
                     vk::BufferUsageFlags::INDEX_BUFFER | buffer_usage_flags,
                     &indices,
@@ -686,13 +709,22 @@ impl Renderer {
             staging_buffers.push(staging_index_buffer);
 
             let (vertex_buffer, staging_vertex_buffer) = command_buffer
-                .create_device_local_buffer_with_data::<_>(
+                .create_device_local_buffer_with_data(
                     self.device.clone(),
                     vk::BufferUsageFlags::VERTEX_BUFFER | buffer_usage_flags,
                     &vertices,
                 );
             self.static_vertex_buffer = vertex_buffer;
             staging_buffers.push(staging_vertex_buffer);
+
+            let (offset_buffer, staging_offset_buffer) = command_buffer
+                .create_device_local_buffer_with_data(
+                    self.device.clone(),
+                    vk::BufferUsageFlags::STORAGE_BUFFER | buffer_usage_flags,
+                    &offsets,
+                );
+            self.static_offset_buffer = offset_buffer;
+            staging_buffers.push(staging_offset_buffer);
         });
 
         scene.textures().iter().for_each(|texture| {
@@ -851,10 +883,10 @@ impl Renderer {
         puffin::profile_function!();
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
             puffin::profile_scope!("top_structures update");
-            let bottom_structures = &self.bottom_structures;
-            let blas_addresses = bottom_structures
+            let blas_addresses = &self
+                .bottom_structures
                 .iter()
-                .map(|b| b.get_address())
+                .map(|blas| blas.get_address())
                 .collect::<Vec<_>>();
             let instances = instances
                 .par_iter()
@@ -947,8 +979,8 @@ impl Renderer {
     fn create_blas(
         command_buffer: CommandBuffer,
         bottom_structures: &mut [BottomLevelAccelerationStructure],
-        scratch_buffer: &Buffer,
-        buffer: &Buffer,
+        bottom_structures_scratch_buffer: &Buffer,
+        bottom_structures_buffer: &Buffer,
     ) {
         let mut result_offset = 0;
         let mut scratch_offset = 0;
@@ -956,9 +988,9 @@ impl Renderer {
         for blas in bottom_structures {
             blas.generate(
                 &command_buffer,
-                scratch_buffer,
+                bottom_structures_scratch_buffer,
                 scratch_offset,
-                buffer,
+                bottom_structures_buffer,
                 result_offset,
             );
 

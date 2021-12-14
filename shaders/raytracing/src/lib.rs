@@ -59,18 +59,22 @@ pub fn closest_hit(
     #[spirv(descriptor_set = 0, binding = 4, storage_buffer)] vertices: &[Vertex],
     #[spirv(descriptor_set = 0, binding = 5, storage_buffer)] indices: &[u32],
     #[spirv(descriptor_set = 0, binding = 6, storage_buffer)] materials: &[Material],
-    #[spirv(descriptor_set = 0, binding = 7)] textures: &Textures,
-    #[spirv(descriptor_set = 0, binding = 8)] sampler: &Sampler,
+    #[spirv(descriptor_set = 0, binding = 7, storage_buffer)] offsets: &[(u32, u32)],
+    #[spirv(descriptor_set = 0, binding = 8)] textures: &Textures,
+    #[spirv(descriptor_set = 0, binding = 9)] sampler: &Sampler,
 ) {
-    let id = 3 * id as usize;
-    let ind = (
-        indices[id] as usize,
-        indices[id + 1] as usize,
-        indices[id + 2] as usize,
+    let id = id as usize;
+    let offsets = &offsets[index as usize];
+    // let (vertex_offset, index_offset) = (offsets.vertex as usize, offsets.index as usize);
+    let (vertex_offset, index_offset) = (offsets.0 as usize, offsets.1 as usize);
+    let indices = (
+        indices[index_offset + id * 3] as usize,
+        indices[index_offset + id * 3 + 1] as usize,
+        indices[index_offset + id * 3 + 2] as usize,
     );
-    let v0 = &vertices[ind.0];
-    let v1 = &vertices[ind.1];
-    let v2 = &vertices[ind.2];
+    let v0 = &vertices[vertex_offset + indices.0];
+    let v1 = &vertices[vertex_offset + indices.1];
+    let v2 = &vertices[vertex_offset + indices.2];
 
     let barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
 
@@ -81,7 +85,16 @@ pub fn closest_hit(
         sampler: *sampler,
         uv,
     };
-    let tex = texture_sampler.sample(v0.side);
+    // let tex = texture_sampler.sample(v0.side);
+    let tex = match v0.side {
+        0 => vec4(0.0, 0.0, 0.0, 1.0),
+        1 => vec4(0.1, 0.8, 0.1, 1.0),
+        2 => vec4(0.9, 0.2, 0.2, 1.0),
+        3 => vec4(0.2, 0.2, 0.2, 1.0),
+        4 => vec4(0.1, 0.1, 0.7, 1.0),
+        5 => vec4(0.9, 0.9, 0.9, 1.0),
+        _ => vec4(0.0, 0.0, 0.0, 1.0),
+    };
 
     *out = tex.truncate();
 }

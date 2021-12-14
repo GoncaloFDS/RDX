@@ -25,8 +25,8 @@ pub enum Direction {
 impl Direction {
     pub fn get_vector(&self) -> IVec3 {
         match *self {
-            Direction::Back => IVec3::Z,
-            Direction::Forwards => -IVec3::Z,
+            Direction::Back => -IVec3::Z,
+            Direction::Forwards => IVec3::Z,
             Direction::Left => -IVec3::X,
             Direction::Right => IVec3::X,
             Direction::Up => IVec3::Y,
@@ -65,10 +65,10 @@ impl Instance {
     }
 }
 
-#[derive(Default)]
 pub struct Mesh {
     vertices: Vec<Std430ModelVertex>,
     indices: Vec<u32>,
+    chunk_id: u32,
 }
 
 impl Mesh {
@@ -78,6 +78,20 @@ impl Mesh {
 
     pub fn indices(&self) -> &[u32] {
         &self.indices
+    }
+
+    pub fn chunk_id(&self) -> u32 {
+        self.chunk_id
+    }
+}
+
+impl Mesh {
+    pub fn new(chunk_id: u32) -> Self {
+        Mesh {
+            vertices: vec![],
+            indices: vec![],
+            chunk_id,
+        }
     }
 
     pub fn add_vertex(&mut self, position: Vec3) {
@@ -94,42 +108,50 @@ impl Mesh {
         let x = position.x as f32;
         let y = position.y as f32;
         let z = position.z as f32;
+        let color = match block {
+            Block::Empty => 0,
+            Block::Grass => 1,
+            Block::Dirt => 2,
+            Block::Stone => 3,
+            Block::Water => 4,
+            Block::Air => 5,
+        };
         let quad = match direction {
             Direction::Back => [
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
             ],
             Direction::Forwards => [
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
             ],
             Direction::Left => [
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
             ],
             Direction::Right => [
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
             ],
             Direction::Up => [
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
             ],
             Direction::Down => [
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), Vec2::ZERO, 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), Vec2::ZERO, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), Vec2::ZERO, color).as_std430(),
             ],
         };
         self.vertices.extend_from_slice(&quad);

@@ -9,6 +9,7 @@ use egui_winit::winit::event::Event;
 use egui_winit::winit::event_loop::ControlFlow;
 use glam::*;
 use hecs::World;
+use rayon::prelude::*;
 use std::rc::Rc;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
@@ -16,13 +17,17 @@ use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
 fn spawn_entities(world: &mut World) {
-    let mut chunks_to_spawn = vec![];
-    for x in 0..MAP_SIZE {
-        for z in 0..MAP_SIZE {
-            let chunk = Chunk::new(ivec3(x * CHUNK_SIZE, 0, z * CHUNK_SIZE));
-            chunks_to_spawn.push((chunk,));
-        }
-    }
+    let chunks_to_spawn: Vec<_> = (0..MAP_SIZE)
+        .collect::<Vec<_>>()
+        .par_iter()
+        .flat_map(|&x| {
+            (0..MAP_SIZE)
+                .into_iter()
+                .map(|z| (Chunk::new(ivec3(x * CHUNK_SIZE, 0, z * CHUNK_SIZE)),))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
     world.spawn_batch(chunks_to_spawn);
 }
 
@@ -61,7 +66,7 @@ impl Engine {
             window,
             renderer,
             scene,
-            camera: Camera::new(vec3(0.0, 2.0, 0.0), vec3(2.0, 0.0, 2.0)),
+            camera: Camera::new(vec3(0.0, 100.0, 0.0), vec3(2.0, 100.0, 2.0)),
             input: Default::default(),
             ui,
             world,
