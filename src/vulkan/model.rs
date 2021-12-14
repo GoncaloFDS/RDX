@@ -1,5 +1,5 @@
-use crate::block::Block;
-use crate::vulkan::scene::Coords;
+use crate::block::{Block, Sides};
+use crate::vulkan::scene::{BlockUVs, Coords};
 use crate::vulkan::vertex::{ModelVertex, Std430ModelVertex};
 use crevice::std430::AsStd430;
 use glam::*;
@@ -93,9 +93,9 @@ impl Mesh {
         direction: Direction,
         position: IVec3,
         block: Block,
-        texture_coords: Coords,
+        block_uvs: BlockUVs,
     ) {
-        self.add_quad_vertices(direction, position, block, texture_coords);
+        self.add_quad_vertices(direction, position, block, block_uvs);
         self.compute_quad_indices();
     }
 
@@ -104,73 +104,60 @@ impl Mesh {
         direction: Direction,
         position: IVec3,
         block: Block,
-        texture_coords: Coords,
+        block_uvs: BlockUVs,
     ) {
+        puffin::profile_function!();
         let x = position.x as f32;
         let y = position.y as f32;
         let z = position.z as f32;
-        let color = match block {
-            Block::Empty => 0,
-            Block::Grass => 1,
-            Block::Dirt => 2,
-            Block::Stone => 3,
-            Block::Water => 4,
-            Block::Air => 5,
-        };
-        let t = block.texture_names();
-        let uv0 = vec2(
-            texture_coords.x as f32,
-            (texture_coords.y + texture_coords.h) as f32,
-        );
-        let uv1 = vec2(
-            (texture_coords.x + texture_coords.w) as f32,
-            (texture_coords.y + texture_coords.h) as f32,
-        );
-        let uv2 = vec2(
-            (texture_coords.x + texture_coords.w) as f32,
-            (texture_coords.y) as f32,
-        );
-        let uv3 = vec2(texture_coords.x as f32, (texture_coords.y) as f32);
-        let uv0 = uv0 / vec2(425.0, 2030.0);
-        let uv1 = uv1 / vec2(425.0, 2030.0);
-        let uv2 = uv2 / vec2(425.0, 2030.0);
-        let uv3 = uv3 / vec2(425.0, 2030.0);
+
+        let sides = block.side_count();
+
+        let side_uv = block_uvs.side();
+        let mut top_uv = block_uvs.top();
+        let mut bot_uv = block_uvs.bot();
+
+        if sides == Sides::AllEqual {
+            top_uv = side_uv;
+            bot_uv = side_uv;
+        }
+
         let quad = match direction {
             Direction::Back => [
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), uv0, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), uv1, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), uv2, color).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), uv3, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), side_uv.uv0(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), side_uv.uv1(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), side_uv.uv2(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), side_uv.uv3(), 0).as_std430(),
             ],
             Direction::Forwards => [
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), uv0, color).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), uv1, color).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), uv2, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), uv3, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), side_uv.uv0(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), side_uv.uv1(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), side_uv.uv2(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), side_uv.uv3(), 0).as_std430(),
             ],
             Direction::Left => [
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), uv0, color).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), uv1, color).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), uv2, color).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), uv3, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), side_uv.uv0(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), side_uv.uv1(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), side_uv.uv2(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), side_uv.uv3(), 0).as_std430(),
             ],
             Direction::Right => [
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), uv0, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), uv1, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), uv2, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), uv3, color).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), side_uv.uv0(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), side_uv.uv1(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), side_uv.uv2(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), side_uv.uv3(), 0).as_std430(),
             ],
             Direction::Up => [
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), uv0, color).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), uv1, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), uv2, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), uv3, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), top_uv.uv0(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), top_uv.uv1(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), top_uv.uv2(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), top_uv.uv3(), 0).as_std430(),
             ],
             Direction::Down => [
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), uv0, color).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), uv1, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), uv2, color).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), uv3, color).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), bot_uv.uv0(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), bot_uv.uv1(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), bot_uv.uv2(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), bot_uv.uv3(), 0).as_std430(),
             ],
         };
         self.vertices.extend_from_slice(&quad);

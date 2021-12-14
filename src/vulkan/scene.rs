@@ -1,7 +1,7 @@
 use crate::block::{Block, BlockTextures};
 use crate::vulkan::texture::Texture;
 use crevice::std430::AsStd430;
-use glam::{vec3, Vec3};
+use glam::{vec2, vec3, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -34,8 +34,14 @@ pub struct Frame {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct AtlasMeta {
+    pub size: Size,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct TextureAtlas {
     pub frames: Vec<Frame>,
+    pub meta: AtlasMeta,
 }
 
 #[derive(AsStd430)]
@@ -49,12 +55,113 @@ impl Material {
     }
 }
 
+#[derive(Default, Copy, Clone, Debug)]
+pub struct QuadUVs {
+    uv0: Vec2,
+    uv1: Vec2,
+    uv2: Vec2,
+    uv3: Vec2,
+}
+
+impl QuadUVs {
+    pub fn uv0(&self) -> Vec2 {
+        self.uv0
+    }
+    pub fn uv1(&self) -> Vec2 {
+        self.uv1
+    }
+    pub fn uv2(&self) -> Vec2 {
+        self.uv2
+    }
+    pub fn uv3(&self) -> Vec2 {
+        self.uv3
+    }
+}
+
+impl QuadUVs {
+    pub fn new(uv0: Vec2, uv1: Vec2, uv2: Vec2, uv3: Vec2) -> Self {
+        QuadUVs { uv0, uv1, uv2, uv3 }
+    }
+}
+
+#[derive(Default, Copy, Clone, Debug)]
+pub struct BlockUVs {
+    side: QuadUVs,
+    top: QuadUVs,
+    bot: QuadUVs,
+}
+
+impl BlockUVs {
+    pub fn side(&self) -> &QuadUVs {
+        &self.side
+    }
+    pub fn top(&self) -> &QuadUVs {
+        &self.top
+    }
+    pub fn bot(&self) -> &QuadUVs {
+        &self.bot
+    }
+}
+
+impl BlockUVs {
+    pub fn new(side: QuadUVs, top: QuadUVs, bot: QuadUVs) -> Self {
+        BlockUVs { side, top, bot }
+    }
+}
+
 pub struct Scene {
     textures: Vec<Texture>,
-    map: HashMap<u32, Coords>,
-    other: HashMap<Block, BlockTextures>,
+    uvs: HashMap<Block, BlockUVs>,
     texture_atlas: TextureAtlas,
     materials: Vec<Std430Material>,
+}
+
+fn get_quad_uv(texture: Option<String>, texture_atlas: &TextureAtlas) -> QuadUVs {
+    if let Some(texture) = texture {
+        let texture_coords = texture_atlas
+            .frames
+            .iter()
+            .find(|frame| frame.filename == texture)
+            .unwrap()
+            .frame;
+
+        let uv0 = vec2(
+            texture_coords.x as f32,
+            (texture_coords.y + texture_coords.h) as f32,
+        );
+        let uv1 = vec2(
+            (texture_coords.x + texture_coords.w) as f32,
+            (texture_coords.y + texture_coords.h) as f32,
+        );
+        let uv2 = vec2(
+            (texture_coords.x + texture_coords.w) as f32,
+            (texture_coords.y) as f32,
+        );
+        let uv3 = vec2(texture_coords.x as f32, (texture_coords.y) as f32);
+
+        let size = vec2(
+            texture_atlas.meta.size.w as f32,
+            texture_atlas.meta.size.h as f32,
+        );
+
+        let uv0 = uv0 / size;
+        let uv1 = uv1 / size;
+        let uv2 = uv2 / size;
+        let uv3 = uv3 / size;
+
+        QuadUVs::new(uv0, uv1, uv2, uv3)
+    } else {
+        QuadUVs::default()
+    }
+}
+
+fn get_uvs(block: Block, texture_atlas: &TextureAtlas) -> BlockUVs {
+    let textures = block.texture_names();
+    let side = get_quad_uv(textures.side(), texture_atlas);
+    let top = get_quad_uv(textures.top(), texture_atlas);
+    let bot = get_quad_uv(textures.bottom(), texture_atlas);
+
+    BlockUVs::new(side, top, bot)
 }
 
 impl Scene {
@@ -64,64 +171,14 @@ impl Scene {
         let mut frames_file = File::open("resources/textures/blocks.json").unwrap();
         let texture_atlas: TextureAtlas = serde_json::from_reader(frames_file).unwrap();
 
-        let mut map = HashMap::new();
-        let mut other = HashMap::new();
+        let mut uvs = HashMap::new();
 
         for block in Block::iter() {
-            let names = block.texture_names();
-            let side = names.side().map(|side_texture| {
-                texture_atlas
-                    .frames
-                    .iter()
-                    .enumerate()
-                    .find(|(_, frame)| frame.filename == side_texture)
-                    .map(|(id, frame)| (id, frame.frame))
-                    .unwrap()
-            });
-            if let Some((id, tex)) = side {
-                map.insert(id as u32, tex);
-                log::debug!("{:?}: id : {}, tex: {:?}", block, id, tex);
-            }
-
-            let top = names.top().map(|side_texture| {
-                texture_atlas
-                    .frames
-                    .iter()
-                    .enumerate()
-                    .find(|(_, frame)| frame.filename == side_texture)
-                    .map(|(id, frame)| (id, frame.frame))
-                    .unwrap()
-            });
-            if let Some((id, tex)) = top {
-                map.insert(id as u32, tex);
-                log::debug!("{:?}: id : {}, tex: {:?}", block, id, tex);
-            }
-
-            let bottom = names.bottom().map(|side_texture| {
-                texture_atlas
-                    .frames
-                    .iter()
-                    .enumerate()
-                    .find(|(_, frame)| frame.filename == side_texture)
-                    .map(|(id, frame)| (id, frame.frame))
-                    .unwrap()
-            });
-            if let Some((id, tex)) = bottom {
-                map.insert(id as u32, tex);
-                log::debug!("{:?}: id : {}, tex: {:?}", block, id, tex);
-            }
-
-            other.insert(
-                block,
-                BlockTextures::new(
-                    side.map(|a| a.0 as u32),
-                    top.map(|a| a.0 as u32),
-                    bottom.map(|a| a.0 as u32),
-                ),
-            );
+            let block_uvs = get_uvs(block, &texture_atlas);
+            uvs.insert(block, block_uvs);
         }
 
-        log::debug!("other: {:?}", other);
+        log::debug!("uvs: {:?}", uvs);
 
         let materials = vec![
             Material::new(vec3(1.0, 0.0, 0.0)).as_std430(),
@@ -131,20 +188,14 @@ impl Scene {
 
         Scene {
             textures,
-            map,
-            other,
+            uvs,
             texture_atlas,
             materials,
         }
     }
 
-    pub fn get_texture_coords(&self, block: Block) -> Coords {
-        let block_textures = self.other.get(&block).unwrap();
-        if let Some(side_id) = block_textures.side {
-            self.map.get(&side_id).unwrap().clone()
-        } else {
-            Coords::default()
-        }
+    pub fn get_block_uvs(&self, block: Block) -> BlockUVs {
+        *self.uvs.get(&block).unwrap()
     }
 }
 

@@ -1,6 +1,12 @@
 use strum_macros::EnumIter;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
+pub enum Sides {
+    AllEqual,
+    TopBotDiff,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum Block {
     Empty,
     Grass,
@@ -23,14 +29,21 @@ impl Block {
         match self {
             Block::Empty => BlockTextureNames::default(),
             Block::Grass => BlockTextureNames::new(
-                Some("grass_carried.png".into()),
                 Some("grass_side_carried.png".into()),
+                Some("grass_carried.png".into()),
                 Some("dirt.png".into()),
             ),
             Block::Dirt => BlockTextureNames::new(Some("dirt.png".into()), None, None),
             Block::Stone => BlockTextureNames::default(),
             Block::Water => BlockTextureNames::default(),
             Block::Air => BlockTextureNames::default(),
+        }
+    }
+
+    pub fn side_count(self) -> Sides {
+        match self {
+            Block::Grass => Sides::TopBotDiff,
+            _ => Sides::AllEqual,
         }
     }
 }

@@ -95,12 +95,12 @@ impl Chunk {
             let neighbour_block =
                 self.get_block_from_chunk_coordinates(neighbour_block_coordinates);
 
-            let texture_coords = scene.get_texture_coords(block);
             if neighbour_block != Block::Empty && !neighbour_block.is_solid() {
                 if block == Block::Water {
                     //todo!()
                 } else {
-                    mesh.add_quad(*dir, position, block, texture_coords);
+                    let block_uvs = scene.get_block_uvs(block);
+                    mesh.add_quad(*dir, position, block, block_uvs);
                 }
             }
         });
