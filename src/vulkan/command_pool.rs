@@ -81,6 +81,8 @@ impl CommandPool {
                 .queue_submit(graphics_queue, &[submit_info], None)
                 .unwrap();
             device.device_wait_idle().unwrap();
+
+            // device.free_command_buffers(command_pool.handle, &[command_buffer.handle()])
         }
     }
 }

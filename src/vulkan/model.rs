@@ -66,7 +66,7 @@ impl Instance {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Mesh {
     vertices: Vec<Std430ModelVertex>,
     indices: Vec<u32>,
@@ -85,7 +85,7 @@ impl Mesh {
 impl Mesh {
     pub fn add_vertex(&mut self, position: Vec3) {
         self.vertices
-            .push(ModelVertex::new(position, Vec2::ZERO, 0).as_std430())
+            .push(ModelVertex::new(position, Vec2::ZERO).as_std430())
     }
 
     pub fn add_quad(
@@ -123,40 +123,40 @@ impl Mesh {
 
         let quad = match direction {
             Direction::Back => [
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), side_uv.uv0(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), side_uv.uv1(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), side_uv.uv2(), 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), side_uv.uv3(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), side_uv.uv0()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), side_uv.uv1()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), side_uv.uv2()).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), side_uv.uv3()).as_std430(),
             ],
             Direction::Forwards => [
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), side_uv.uv0(), 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), side_uv.uv1(), 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), side_uv.uv2(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), side_uv.uv3(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), side_uv.uv0()).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), side_uv.uv1()).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), side_uv.uv2()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), side_uv.uv3()).as_std430(),
             ],
             Direction::Left => [
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), side_uv.uv0(), 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), side_uv.uv1(), 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), side_uv.uv2(), 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), side_uv.uv3(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), side_uv.uv0()).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), side_uv.uv1()).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), side_uv.uv2()).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), side_uv.uv3()).as_std430(),
             ],
             Direction::Right => [
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), side_uv.uv0(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), side_uv.uv1(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), side_uv.uv2(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), side_uv.uv3(), 0).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), side_uv.uv0()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), side_uv.uv1()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), side_uv.uv2()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), side_uv.uv3()).as_std430(),
             ],
             Direction::Up => [
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), top_uv.uv0(), 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), top_uv.uv1(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), top_uv.uv2(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), top_uv.uv3(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z - 0.5), top_uv.uv0()).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y + 0.5, z + 0.5), top_uv.uv1()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z + 0.5), top_uv.uv2()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y + 0.5, z - 0.5), top_uv.uv3()).as_std430(),
             ],
             Direction::Down => [
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), bot_uv.uv0(), 0).as_std430(),
-                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), bot_uv.uv1(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), bot_uv.uv2(), 0).as_std430(),
-                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), bot_uv.uv3(), 0).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z + 0.5), bot_uv.uv0()).as_std430(),
+                ModelVertex::new(vec3(x - 0.5, y - 0.5, z - 0.5), bot_uv.uv1()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z - 0.5), bot_uv.uv2()).as_std430(),
+                ModelVertex::new(vec3(x + 0.5, y - 0.5, z + 0.5), bot_uv.uv3()).as_std430(),
             ],
         };
         self.vertices.extend_from_slice(&quad);

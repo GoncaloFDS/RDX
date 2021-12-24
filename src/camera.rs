@@ -164,3 +164,9 @@ impl Camera {
         self.position += amount * self.up.truncate();
     }
 }
+
+impl Camera {
+    pub fn position(&self) -> Vec3 {
+        self.position
+    }
+}

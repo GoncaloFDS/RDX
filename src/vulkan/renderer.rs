@@ -186,7 +186,13 @@ impl Renderer {
         self.create(window);
     }
 
-    pub fn update(&mut self, camera: &Camera, ui: &mut UserInterface, world: &mut World) {
+    pub fn update(
+        &mut self,
+        camera: &Camera,
+        ui: &mut UserInterface,
+        world: &mut World,
+        scene: &Scene,
+    ) {
         puffin::profile_function!();
         let extent = self.swapchain.extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
@@ -268,11 +274,32 @@ impl Renderer {
         self.device.wait_idle();
     }
 
+    pub fn upload_textures(&mut self, scene: &Scene) {
+        let mut staging_buffers = vec![];
+        CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
+            let (material_buffer, staging_material_buffer) = command_buffer
+                .create_device_local_buffer_with_data(
+                    self.device.clone(),
+                    vk::BufferUsageFlags::STORAGE_BUFFER
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    &scene.materials(),
+                );
+            self.material_buffer = material_buffer;
+            staging_buffers.push(staging_material_buffer);
+        });
+
+        scene.textures().iter().for_each(|texture| {
+            let texture_image = TextureImage::new(self.device.clone(), &self.command_pool, texture);
+            self.texture_images.push(texture_image);
+        });
+    }
+
     pub fn upload_scene_buffers(&mut self, scene: &Scene, world: &World) {
         puffin::profile_function!();
+        self.device.wait_idle();
 
         let meshes = world
-            .query::<&Chunk>()
+            .query::<&mut Chunk>()
             .iter_batched(16)
             .collect::<Vec<_>>()
             .into_par_iter()
@@ -308,16 +335,6 @@ impl Renderer {
 
         let mut staging_buffers = vec![];
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
-            let (material_buffer, staging_material_buffer) = command_buffer
-                .create_device_local_buffer_with_data(
-                    self.device.clone(),
-                    vk::BufferUsageFlags::STORAGE_BUFFER
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                    &scene.materials(),
-                );
-            self.material_buffer = material_buffer;
-            staging_buffers.push(staging_material_buffer);
-
             let buffer_usage_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER
                 | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
@@ -348,11 +365,6 @@ impl Renderer {
                 );
             self.static_offset_buffer = offset_buffer;
             staging_buffers.push(staging_offset_buffer);
-        });
-
-        scene.textures().iter().for_each(|texture| {
-            let texture_image = TextureImage::new(self.device.clone(), &self.command_pool, texture);
-            self.texture_images.push(texture_image);
         });
 
         self.create_acceleration_structures(&meshes);
@@ -495,7 +507,6 @@ impl Renderer {
                 .collect::<Vec<_>>();
 
             let id = 0;
-
             self.vertex_buffers[id].write_data(&vertices, vertex_start);
             self.index_buffers[id].write_data(&mesh.indices, index_start);
 
@@ -836,6 +847,7 @@ impl Renderer {
 
     fn create_acceleration_structures(&mut self, meshes: &[Mesh]) {
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
+            self.device.wait_idle();
             Renderer::allocate_blas_buffers(
                 self.device.clone(),
                 &mut self.bottom_structures,
@@ -874,34 +886,29 @@ impl Renderer {
         puffin::profile_function!();
         let instances = world
             .query::<&Chunk>()
-            .iter_batched(16)
-            .collect::<Vec<_>>()
-            .into_par_iter()
-            .flat_map(|batch| {
-                batch
-                    .map(|(id, chunk)| Instance::new(id.id(), id.id() as u32, chunk.transform()))
-                    .collect::<Vec<_>>()
-            })
+            .iter()
+            .map(|(id, chunk)| Instance::new(id.id(), id.id() as u32, chunk.transform()))
             .collect::<Vec<_>>();
-        let old = self.top_structures.pop().unwrap();
-        self.submit_top_structures_update(instances, old);
+        // let old = self.top_structures.pop().unwrap();
+        self.submit_top_structures_update(instances);
     }
 
     fn submit_top_structures_update(
         &mut self,
         instances: Vec<Instance>,
-        old: TopLevelAccelerationStructure,
+        // old: TopLevelAccelerationStructure,
     ) {
         puffin::profile_function!();
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
             puffin::profile_scope!("top_structures update");
+            command_buffer.acceleration_structure_memory_barrier(&self.device);
             let blas_addresses = &self
                 .bottom_structures
                 .iter()
                 .map(|blas| blas.get_address())
                 .collect::<Vec<_>>();
             let instances = instances
-                .par_iter()
+                .iter()
                 .map(|instance| {
                     TopLevelAccelerationStructure::create_instance(
                         blas_addresses[instance.blas_id() as usize],
@@ -910,15 +917,34 @@ impl Renderer {
                         0,
                     )
                 })
-                .collect::<Vec<_>>();
+                .collect::<Vec<vk::AccelerationStructureInstanceKHR>>();
             self.instances_buffer.write_data(&instances, 0);
 
-            self.top_structures.push(TopLevelAccelerationStructure::new(
+            assert_eq!(self.top_structures.len(), 1);
+            self.top_structures[0] = TopLevelAccelerationStructure::new(
                 self.device.clone(),
                 self.raytracing_properties,
                 self.instances_buffer.get_device_address(),
                 MAX_INSTANCE_COUNT as u32,
-            ));
+            );
+
+            let memory_requirements = get_total_memory_requirements(&self.top_structures);
+
+            self.top_structures_buffer = Buffer::new(
+                self.device.clone(),
+                memory_requirements.acceleration_structure_size,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
+                gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
+            );
+
+            self.top_structures_scratch_buffer = Buffer::new(
+                self.device.clone(),
+                memory_requirements.build_scratch_size,
+                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::STORAGE_BUFFER,
+                gpu_alloc::UsageFlags::DEVICE_ADDRESS,
+            );
 
             self.top_structures[0].generate(
                 &command_buffer,
@@ -926,7 +952,7 @@ impl Renderer {
                 0,
                 &self.top_structures_buffer,
                 0,
-                Some(old.handle()),
+                None,
             );
         });
     }

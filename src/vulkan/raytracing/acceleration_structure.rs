@@ -43,11 +43,15 @@ pub fn get_total_memory_requirements<T: AccelerationStrutcture>(
     let (acceleration_structure_size, build_scratch_size, update_scratch_size) =
         acceleration_structures.iter().fold(
             (0, 0, 0),
-            |(acceleration_structure_size, build_scratch_size, update_scratch_size), blas| {
+            |(acceleration_structure_size, build_scratch_size, update_scratch_size),
+             acceleration_structure| {
                 (
-                    acceleration_structure_size + blas.build_sizes().acceleration_structure_size,
-                    build_scratch_size + blas.build_sizes().build_scratch_size,
-                    update_scratch_size + blas.build_sizes().update_scratch_size,
+                    acceleration_structure_size
+                        + acceleration_structure
+                            .build_sizes()
+                            .acceleration_structure_size,
+                    build_scratch_size + acceleration_structure.build_sizes().build_scratch_size,
+                    update_scratch_size + acceleration_structure.build_sizes().update_scratch_size,
                 )
             },
         );

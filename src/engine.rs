@@ -1,5 +1,8 @@
 use crate::camera::Camera;
-use crate::chunk::{Chunk, CHUNK_SIZE, MAP_SIZE};
+use crate::chunk::{
+    Biome, Chunk, ChunkCoord, NoiseSettings, TerrainGenerator, CHUNK_DRAW_RANGE, CHUNK_SIZE,
+    MAP_SIZE,
+};
 use crate::input::Input;
 use crate::time::Time;
 use crate::user_interface::UserInterface;
@@ -17,18 +20,79 @@ use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
 fn spawn_entities(world: &mut World) {
+    let noise_settings = NoiseSettings::new(144, 1, 0.008);
+    let biome = Biome::new(noise_settings);
     let chunks_to_spawn: Vec<_> = (0..MAP_SIZE)
         .collect::<Vec<_>>()
         .par_iter()
         .flat_map(|&x| {
             (0..MAP_SIZE)
                 .into_iter()
-                .map(|z| (Chunk::new(ivec3(x * CHUNK_SIZE, 0, z * CHUNK_SIZE)),))
+                .map(|z| {
+                    let x = x - MAP_SIZE / 2;
+                    let z = z - MAP_SIZE / 2;
+                    let mut chunk = Chunk::new(ivec3(x * CHUNK_SIZE, 0, z * CHUNK_SIZE));
+                    let chunk_coord = ChunkCoord::new(x, z);
+                    log::debug!("inserting {:?}", chunk_coord);
+                    TerrainGenerator::generate_chunk(&mut chunk, &biome);
+                    (chunk, chunk_coord)
+                })
                 .collect::<Vec<_>>()
         })
         .collect();
 
     world.spawn_batch(chunks_to_spawn);
+
+    // world.spawn((TerrainGenerator::new(Vec3::ZERO),));
+}
+
+fn get_chunks_around_camera(world: &mut World, camera: &Camera) -> bool {
+    // TODO: remove
+    let noise_settings = NoiseSettings::new(144, 1, 0.008);
+    let biome = Biome::new(noise_settings);
+    //
+
+    let camera_chunk = Chunk::chunk_coords_from_world_position(camera.position());
+    let start_x = camera_chunk.x() - CHUNK_DRAW_RANGE;
+    let start_z = camera_chunk.z() - CHUNK_DRAW_RANGE;
+    let end_x = camera_chunk.x() + CHUNK_DRAW_RANGE;
+    let end_z = camera_chunk.z() + CHUNK_DRAW_RANGE;
+
+    let new_chunks_coords = (start_x..end_x)
+        .into_iter()
+        .flat_map(|x| {
+            (start_z..end_z)
+                .into_iter()
+                .map(|z| ChunkCoord::new(x, z))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    let existing = world
+        .query::<&ChunkCoord>()
+        .iter()
+        .map(|(_, &chunk)| chunk)
+        .collect::<Vec<_>>();
+
+    let chunks_to_spawn = new_chunks_coords
+        .iter()
+        .filter(|chunk_coord| !existing.contains(chunk_coord))
+        .map(|&chunk_coord| {
+            log::debug!("inserting {:?}", chunk_coord);
+            let mut chunk = Chunk::new(ivec3(
+                chunk_coord.x() * CHUNK_SIZE,
+                0,
+                chunk_coord.z() * CHUNK_SIZE,
+            ));
+            TerrainGenerator::generate_chunk(&mut chunk, &biome);
+            (chunk, chunk_coord)
+        })
+        .collect::<Vec<_>>();
+
+    let should_update = !chunks_to_spawn.is_empty();
+    let a = world.spawn_batch(chunks_to_spawn);
+
+    should_update
 }
 
 pub struct Engine {
@@ -55,6 +119,7 @@ impl Engine {
         let mut renderer = Renderer::new();
 
         let scene = Scene::new();
+        renderer.upload_textures(&scene);
         renderer.upload_scene_buffers(&scene, &world);
 
         renderer.setup(&window);
@@ -151,8 +216,12 @@ impl Engine {
         puffin::GlobalProfiler::lock().new_frame();
         puffin::profile_function!();
         self.camera.update_camera(self.time.delta_time());
+        if get_chunks_around_camera(&mut self.world, &self.camera) {
+            self.renderer.upload_scene_buffers(&self.scene, &self.world);
+            // self.renderer.recreate(&self.window);
+        }
         self.renderer
-            .update(&self.camera, &mut self.ui, &mut self.world);
+            .update(&self.camera, &mut self.ui, &mut self.world, &self.scene);
         self.renderer.draw_frame();
         self.renderer.present_frame();
         self.time.tick();

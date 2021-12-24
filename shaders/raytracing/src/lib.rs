@@ -27,7 +27,6 @@ pub struct Material {
 pub struct Vertex {
     pub position: Vec3,
     pub uv: Vec2,
-    pub side: u32,
 }
 
 type Textures = RuntimeArray<Image!(2D, type=f32, sampled)>;
@@ -58,7 +57,7 @@ pub fn closest_hit(
     #[spirv(hit_attribute)] attribs: &mut Vec2,
     #[spirv(descriptor_set = 0, binding = 4, storage_buffer)] vertices: &[Vertex],
     #[spirv(descriptor_set = 0, binding = 5, storage_buffer)] indices: &[u32],
-    #[spirv(descriptor_set = 0, binding = 6, storage_buffer)] materials: &[Material],
+    // #[spirv(descriptor_set = 0, binding = 6, storage_buffer)] materials: &[Material],
     #[spirv(descriptor_set = 0, binding = 7, storage_buffer)] offsets: &[(u32, u32)],
     #[spirv(descriptor_set = 0, binding = 8)] textures: &Textures,
     #[spirv(descriptor_set = 0, binding = 9)] sampler: &Sampler,

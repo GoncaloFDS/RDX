@@ -13,12 +13,11 @@ pub trait Vertex {
 pub struct ModelVertex {
     position: Vec3,
     uv: Vec2,
-    side: u32,
 }
 
 impl ModelVertex {
-    pub fn new(position: Vec3, uv: Vec2, side: u32) -> Self {
-        ModelVertex { position, uv, side }
+    pub fn new(position: Vec3, uv: Vec2) -> Self {
+        ModelVertex { position, uv }
     }
 }
 
@@ -42,11 +41,6 @@ impl Vertex for ModelVertex {
                 .location(1)
                 .format(vk::Format::R32G32B32_SFLOAT)
                 .offset(offset_of!(Self, uv) as u32),
-            vk::VertexInputAttributeDescriptionBuilder::new()
-                .binding(0)
-                .location(2)
-                .format(vk::Format::R32_UINT)
-                .offset(offset_of!(Self, side) as u32),
         ]
     }
 }
