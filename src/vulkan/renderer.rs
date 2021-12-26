@@ -12,7 +12,7 @@ use crate::vulkan::framebuffer::Framebuffer;
 use crate::vulkan::graphics_pipeline::{GraphicsPipeline, PushConstants};
 use crate::vulkan::image::Image;
 use crate::vulkan::image_view::ImageView;
-use crate::vulkan::model::{Instance, Mesh};
+use crate::vulkan::model::Mesh;
 use crate::vulkan::raytracing::acceleration_structure::{
     get_total_memory_requirements, AccelerationStrutcture,
 };
@@ -21,7 +21,9 @@ use crate::vulkan::raytracing::bottom_level_geometry::BottomLevelGeometry;
 use crate::vulkan::raytracing::raytracing_pipeline::RaytracingPipeline;
 use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
 use crate::vulkan::raytracing::shader_binding_table::{Entry, ShaderBindingTable};
-use crate::vulkan::raytracing::top_level_acceleration_structure::TopLevelAccelerationStructure;
+use crate::vulkan::raytracing::top_level_acceleration_structure::{
+    Instance, TopLevelAccelerationStructure,
+};
 use crate::vulkan::render_pass::RenderPass;
 use crate::vulkan::sampler::{Sampler, SamplerInfo};
 use crate::vulkan::scene::Scene;
@@ -214,7 +216,6 @@ impl Renderer {
             self.update_font_texture(texture);
         }
 
-        self.update_acceleration_structures(world);
         self.update_descriptor_sets();
     }
 
@@ -296,8 +297,6 @@ impl Renderer {
 
     pub fn upload_scene_buffers(&mut self, scene: &Scene, world: &World) {
         puffin::profile_function!();
-        self.device.wait_idle();
-
         let meshes = world
             .query::<&mut Chunk>()
             .iter_batched(16)
@@ -367,7 +366,7 @@ impl Renderer {
             staging_buffers.push(staging_offset_buffer);
         });
 
-        self.create_acceleration_structures(&meshes);
+        self.create_acceleration_structures(&meshes, world);
     }
 }
 
@@ -398,6 +397,7 @@ impl Renderer {
     }
 
     fn update_descriptor_sets(&mut self) {
+        self.device.wait_idle();
         let top_structures = &self.top_structures[0];
         let accumulation_view = &self.accumulation_image_view;
         let output_view = &self.output_image_view;
@@ -845,9 +845,8 @@ impl Renderer {
             .resize_with(count, || UniformBuffer::new(self.device.clone()));
     }
 
-    fn create_acceleration_structures(&mut self, meshes: &[Mesh]) {
+    fn create_acceleration_structures(&mut self, meshes: &[Mesh], world: &World) {
         CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
-            self.device.wait_idle();
             Renderer::allocate_blas_buffers(
                 self.device.clone(),
                 &mut self.bottom_structures,
@@ -879,81 +878,24 @@ impl Renderer {
                 &self.top_structures_scratch_buffer,
                 &self.top_structures_buffer,
             );
-        });
-    }
+            //
 
-    fn update_acceleration_structures(&mut self, world: &mut World) {
-        puffin::profile_function!();
-        let instances = world
-            .query::<&Chunk>()
-            .iter()
-            .map(|(id, chunk)| Instance::new(id.id(), id.id() as u32, chunk.transform()))
-            .collect::<Vec<_>>();
-        // let old = self.top_structures.pop().unwrap();
-        self.submit_top_structures_update(instances);
-    }
-
-    fn submit_top_structures_update(
-        &mut self,
-        instances: Vec<Instance>,
-        // old: TopLevelAccelerationStructure,
-    ) {
-        puffin::profile_function!();
-        CommandPool::single_time_submit(&self.device, &self.command_pool, |command_buffer| {
-            puffin::profile_scope!("top_structures update");
-            command_buffer.acceleration_structure_memory_barrier(&self.device);
             let blas_addresses = &self
                 .bottom_structures
                 .iter()
                 .map(|blas| blas.get_address())
                 .collect::<Vec<_>>();
-            let instances = instances
+
+            let instances = world
+                .query::<&Chunk>()
                 .iter()
-                .map(|instance| {
-                    TopLevelAccelerationStructure::create_instance(
-                        blas_addresses[instance.blas_id() as usize],
-                        instance.transform(),
-                        instance.id(),
-                        0,
-                    )
+                .map(|(id, chunk)| {
+                    let instance = Instance::new(id.id(), id.id() as u32, 0, chunk.transform());
+                    instance.generate(blas_addresses[instance.blas_id() as usize])
                 })
-                .collect::<Vec<vk::AccelerationStructureInstanceKHR>>();
+                .collect::<Vec<_>>();
+
             self.instances_buffer.write_data(&instances, 0);
-
-            assert_eq!(self.top_structures.len(), 1);
-            self.top_structures[0] = TopLevelAccelerationStructure::new(
-                self.device.clone(),
-                self.raytracing_properties,
-                self.instances_buffer.get_device_address(),
-                MAX_INSTANCE_COUNT as u32,
-            );
-
-            let memory_requirements = get_total_memory_requirements(&self.top_structures);
-
-            self.top_structures_buffer = Buffer::new(
-                self.device.clone(),
-                memory_requirements.acceleration_structure_size,
-                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
-                gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
-            );
-
-            self.top_structures_scratch_buffer = Buffer::new(
-                self.device.clone(),
-                memory_requirements.build_scratch_size,
-                vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                    | vk::BufferUsageFlags::STORAGE_BUFFER,
-                gpu_alloc::UsageFlags::DEVICE_ADDRESS,
-            );
-
-            self.top_structures[0].generate(
-                &command_buffer,
-                self.top_structures_scratch_buffer.get_device_address(),
-                0,
-                &self.top_structures_buffer,
-                0,
-                None,
-            );
         });
     }
 

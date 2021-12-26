@@ -33,7 +33,7 @@ fn spawn_entities(world: &mut World) {
                     let z = z - MAP_SIZE / 2;
                     let mut chunk = Chunk::new(ivec3(x * CHUNK_SIZE, 0, z * CHUNK_SIZE));
                     let chunk_coord = ChunkCoord::new(x, z);
-                    log::debug!("inserting {:?}", chunk_coord);
+                    // log::debug!("inserting {:?}", chunk_coord);
                     TerrainGenerator::generate_chunk(&mut chunk, &biome);
                     (chunk, chunk_coord)
                 })
@@ -78,7 +78,7 @@ fn get_chunks_around_camera(world: &mut World, camera: &Camera) -> bool {
         .iter()
         .filter(|chunk_coord| !existing.contains(chunk_coord))
         .map(|&chunk_coord| {
-            log::debug!("inserting {:?}", chunk_coord);
+            // log::debug!("inserting {:?}", chunk_coord);
             let mut chunk = Chunk::new(ivec3(
                 chunk_coord.x() * CHUNK_SIZE,
                 0,
@@ -90,7 +90,7 @@ fn get_chunks_around_camera(world: &mut World, camera: &Camera) -> bool {
         .collect::<Vec<_>>();
 
     let should_update = !chunks_to_spawn.is_empty();
-    let a = world.spawn_batch(chunks_to_spawn);
+    world.spawn_batch(chunks_to_spawn);
 
     should_update
 }
@@ -218,7 +218,6 @@ impl Engine {
         self.camera.update_camera(self.time.delta_time());
         if get_chunks_around_camera(&mut self.world, &self.camera) {
             self.renderer.upload_scene_buffers(&self.scene, &self.world);
-            // self.renderer.recreate(&self.window);
         }
         self.renderer
             .update(&self.camera, &mut self.ui, &mut self.world, &self.scene);

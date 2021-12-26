@@ -5,7 +5,7 @@ use crate::vulkan::raytracing::acceleration_structure;
 use crate::vulkan::raytracing::acceleration_structure::AccelerationStrutcture;
 use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
 use erupt::vk;
-use glam::Mat4;
+use glam::{u32, Mat4};
 use std::rc::Rc;
 
 pub struct TopLevelAccelerationStructure {
@@ -113,25 +113,6 @@ impl TopLevelAccelerationStructure {
             &[build_offset_info],
         )
     }
-
-    pub fn create_instance(
-        blas_address: u64,
-        transform: Mat4,
-        instance_id: u32,
-        hit_group_id: u32,
-    ) -> vk::AccelerationStructureInstanceKHR {
-        *vk::AccelerationStructureInstanceKHRBuilder::new()
-            .instance_custom_index(instance_id)
-            .mask(0xFF)
-            .instance_shader_binding_table_record_offset(hit_group_id)
-            .flags(vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR)
-            .acceleration_structure_reference(blas_address)
-            .transform(*vk::TransformMatrixKHRBuilder::new().matrix([
-                transform.row(0).to_array(),
-                transform.row(1).to_array(),
-                transform.row(2).to_array(),
-            ]))
-    }
 }
 
 impl Drop for TopLevelAccelerationStructure {
@@ -141,5 +122,51 @@ impl Drop for TopLevelAccelerationStructure {
             self.device
                 .destroy_acceleration_structure_khr(Some(self.handle()), None);
         }
+    }
+}
+
+pub struct Instance {
+    id: u32,
+    blas_id: u32,
+    hit_group: u32,
+    transform: Mat4,
+}
+
+impl Instance {
+    pub fn new(id: u32, blas_id: u32, hit_group: u32, transform: Mat4) -> Self {
+        Instance {
+            id,
+            blas_id,
+            hit_group,
+            transform,
+        }
+    }
+
+    pub fn generate(&self, blas_address: u64) -> vk::AccelerationStructureInstanceKHR {
+        *vk::AccelerationStructureInstanceKHRBuilder::new()
+            .instance_custom_index(self.id)
+            .mask(0xFF)
+            .instance_shader_binding_table_record_offset(self.hit_group)
+            .flags(vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR)
+            .acceleration_structure_reference(blas_address)
+            .transform(*vk::TransformMatrixKHRBuilder::new().matrix([
+                self.transform.row(0).to_array(),
+                self.transform.row(1).to_array(),
+                self.transform.row(2).to_array(),
+            ]))
+    }
+}
+
+impl Instance {
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
+    pub fn blas_id(&self) -> u32 {
+        self.blas_id
+    }
+
+    pub fn transform(&self) -> Mat4 {
+        self.transform
     }
 }
