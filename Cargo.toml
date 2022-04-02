@@ -7,14 +7,15 @@ edition = "2021"
 spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu" }
 
 [dependencies]
-log = "0.4.14"
-simple_logger = "1.13.0"
+log = "0.4.16"
+simple_logger = "2.1.0"
 
-winit = "0.25.0"
+winit = "0.26.1"
 
-erupt = "0.19.0"
-gpu-alloc = "0.5.2"
-gpu-alloc-erupt = "0.5.0"
+erupt = "0.22.0"
+erupt-bootstrap = "0.2.3"
+gpu-alloc = "0.5.3"
+gpu-alloc-erupt = "0.7.0"
 
 parking_lot = "0.11.2"
 
@@ -25,24 +26,21 @@ memoffset = "0.6.4"
 bytemuck = "1.7.2"
 crevice = { version = "0.8.0", features = ["glam"] }
 
-egui = "0.15.0"
-egui-winit = "0.15.0"
+egui = "0.17.0"
+egui-winit = "0.17.0"
 
-hecs = "0.7.1"
+hecs = "0.7.6"
 hecs-hierarchy = "0.7.2"
 
-puffin = "0.12.1"
-puffin_egui = "0.11.0"
+puffin = "0.13.1"
+puffin_egui = "0.13.0"
 
-image = "0.23.14"
+image = "0.24.1"
 
-rand = "0.8.4"
+rand = "0.8.5"
 rayon = "1.5.1"
 
 bracket-noise = "0.8.2"
 
 serde = { version = "1.0" , features = ["derive"]}
 serde_json = "1.0"
-
-strum = "0.23"
-strum_macros = "0.23"
