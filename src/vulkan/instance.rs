@@ -1,3 +1,4 @@
+use crate::vulkan::surface::Surface;
 use erupt::{vk, EntryLoader, InstanceLoader};
 use erupt_bootstrap::{DebugMessenger, InstanceBuilder, InstanceMetadata, ValidationLayers};
 use winit::window::Window;
@@ -6,6 +7,7 @@ pub struct Instance {
     handle: InstanceLoader,
     metadata: InstanceMetadata,
     debug_messenger: Option<vk::DebugUtilsMessengerEXT>,
+    surface: Surface,
     _entry: EntryLoader,
 }
 
@@ -22,10 +24,13 @@ impl Instance {
         let (instance, debug_messenger, instance_metadata) =
             unsafe { instance_builder.build(&entry).unwrap() };
 
+        let surface = Surface::new(&instance, &window);
+
         Instance {
             handle: instance,
             metadata: instance_metadata,
             debug_messenger,
+            surface,
             _entry: entry,
         }
     }
@@ -36,6 +41,7 @@ impl Instance {
                 self.handle
                     .destroy_debug_utils_messenger_ext(debug_messenger, None);
             }
+            self.surface.destroy(self.handle());
             self.handle.destroy_instance(None);
         }
     }
@@ -43,8 +49,12 @@ impl Instance {
     pub fn handle(&self) -> &InstanceLoader {
         &self.handle
     }
-    
+
     pub fn metadata(&self) -> &InstanceMetadata {
         &self.metadata
+    }
+
+    pub fn surface(&self) -> Surface {
+        self.surface
     }
 }

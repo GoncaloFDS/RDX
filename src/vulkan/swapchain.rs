@@ -1,8 +1,7 @@
 use crate::vulkan::device::Device;
 use crate::vulkan::instance::Instance;
 use crate::vulkan::surface::Surface;
-use erupt::utils::VulkanResult;
-use erupt::vk;
+use erupt::{vk, DeviceLoader};
 use erupt_bootstrap::AcquiredFrame;
 use winit::window::Window;
 
@@ -18,15 +17,17 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(window: &Window, instance: &Instance, surface: Surface, device: &Device) -> Self {
+    pub fn new(
+        window: &Window,
+        instance: &Instance,
+        surface: Surface,
+        device: &DeviceLoader,
+        physical_device: vk::PhysicalDevice,
+    ) -> Self {
         let surface_formats = unsafe {
             instance
                 .handle()
-                .get_physical_device_surface_formats_khr(
-                    device.metadata().physical_device(),
-                    surface.handle(),
-                    None,
-                )
+                .get_physical_device_surface_formats_khr(physical_device, surface.handle(), None)
                 .unwrap()
         };
         let surface_format = match *surface_formats.as_slice() {
@@ -47,8 +48,8 @@ impl Swapchain {
         let swapchain = erupt_bootstrap::Swapchain::new(
             swapchain_options,
             surface.handle(),
-            device.metadata().physical_device(),
-            device.handle(),
+            physical_device,
+            device,
             vk::Extent2D {
                 width: size.width,
                 height: size.height,
@@ -93,12 +94,12 @@ impl Swapchain {
     pub fn acquire(
         &mut self,
         instance: &Instance,
-        device: &Device,
+        device: &DeviceLoader,
         timeout_ns: u64,
     ) -> AcquiredFrame {
         unsafe {
             self.handle
-                .acquire(instance.handle(), device.handle(), timeout_ns)
+                .acquire(instance.handle(), device, timeout_ns)
                 .unwrap()
         }
     }
@@ -106,14 +107,14 @@ impl Swapchain {
     #[inline]
     pub fn queue_present(
         &mut self,
-        device: &Device,
+        device: &DeviceLoader,
         queue: vk::Queue,
         render_complete: vk::Semaphore,
         image_index: usize,
     ) {
         unsafe {
             self.handle
-                .queue_present(device.handle(), queue, render_complete, image_index)
+                .queue_present(device, queue, render_complete, image_index)
                 .unwrap();
         }
     }

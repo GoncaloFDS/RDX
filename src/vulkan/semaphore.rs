@@ -1,19 +1,14 @@
 use crate::vulkan::device::Device;
-use erupt::vk;
+use erupt::{vk, DeviceLoader};
 
 pub struct Semaphore {
     handle: vk::Semaphore,
 }
 
 impl Semaphore {
-    pub fn new(device: &Device) -> Self {
+    pub fn new(device: &DeviceLoader) -> Self {
         let create_info = vk::SemaphoreCreateInfo::default();
-        let semaphore = unsafe {
-            device
-                .handle()
-                .create_semaphore(&create_info, None)
-                .unwrap()
-        };
+        let semaphore = unsafe { device.create_semaphore(&create_info, None).unwrap() };
 
         Self { handle: semaphore }
     }

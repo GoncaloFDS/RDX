@@ -1,5 +1,5 @@
 use crate::vulkan::device::Device;
-use erupt::vk;
+use erupt::{DeviceLoader, vk};
 
 #[derive(Copy, Clone)]
 pub struct ImageView {
@@ -41,9 +41,9 @@ impl ImageView {
         ImageView { handle: image_view }
     }
 
-    pub fn destoy(self, device: &Device) {
+    pub fn destoy(self, device: &DeviceLoader) {
         unsafe {
-            device.handle().destroy_image_view(self.handle, None);
+            device.destroy_image_view(self.handle, None);
         }
     }
 

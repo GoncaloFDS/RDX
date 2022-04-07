@@ -6,12 +6,82 @@ use crate::vulkan::shader_module::{Shader, ShaderModule};
 use erupt::{vk, ExtendableFrom};
 use std::slice;
 
-pub struct TrianglePass {
+pub trait Renderer {
+    fn fill_command_buffer(
+        &self,
+        device: &Device,
+        command_buffer: &CommandBuffer,
+        current_image: usize,
+    );
+    fn begin_rendering(&self, command_buffer: CommandBuffer, current_image: usize);
+    fn create_uniform_buffers();
+}
+
+pub struct Clear {
+    render_area: vk::Rect2D,
+}
+
+impl Clear {
+    pub fn new(device: &Device) -> Self {
+        let render_area = vk::Rect2D {
+            offset: Default::default(),
+            extent: device.swapchain().extent(),
+        };
+        Clear { render_area }
+    }
+}
+
+impl Renderer for Clear {
+    fn fill_command_buffer(
+        &self,
+        device: &Device,
+        command_buffer: &CommandBuffer,
+        current_image: usize,
+    ) {
+        let color_attachment = vk::RenderingAttachmentInfoBuilder::new()
+            .image_view(device.swapchain_image_view(current_image).handle())
+            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .clear_value(vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.4, 0.3, 0.2, 1.0],
+                },
+            })
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .resolve_image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+
+        let rendering_info = vk::RenderingInfoBuilder::new()
+            .color_attachments(slice::from_ref(&color_attachment))
+            .layer_count(1)
+            .render_area(self.render_area);
+
+        command_buffer.set_scissor(device, 0, &[self.render_area.into_builder()]);
+
+        let extent = self.render_area.extent;
+        let viewports = vk::ViewportBuilder::new()
+            .height(extent.height as f32)
+            .width(extent.width as f32)
+            .max_depth(1.0);
+        command_buffer.set_viewport(device, 0, &[viewports]);
+
+        command_buffer.begin_rendering(device, &rendering_info);
+    }
+
+    fn begin_rendering(&self, command_buffer: CommandBuffer, current_image: usize) {
+        todo!()
+    }
+
+    fn create_uniform_buffers() {
+        todo!()
+    }
+}
+
+pub struct ModelRenderer {
     pipeline: GraphicsPipeline,
     pipeline_layout: PipelineLayout,
 }
 
-impl TrianglePass {
+impl ModelRenderer {
     pub fn new(device: &Device, surface_format: vk::SurfaceFormatKHR) -> Self {
         let shader_module = ShaderModule::new(device, Shader::Raster);
 
@@ -68,26 +138,34 @@ impl TrianglePass {
 
         shader_module.destroy(device);
 
-        TrianglePass {
+        ModelRenderer {
             pipeline,
             pipeline_layout,
         }
     }
+}
 
-    pub fn destroy(&self, device: &Device) {
-        self.pipeline.destroy(device);
-        self.pipeline_layout.destroy(device);
-    }
+impl Renderer for ModelRenderer {
+    fn fill_command_buffer(
+        &self,
+        device: &Device,
+        command_buffer: &CommandBuffer,
+        current_image: usize,
+    ) {
+        command_buffer.bind_pipeline(
+            device,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline.handle(),
+        );
 
-    pub fn pipeline(&self) -> &GraphicsPipeline {
-        &self.pipeline
-    }
-
-    pub fn pipeline_layout(&self) -> &PipelineLayout {
-        &self.pipeline_layout
-    }
-
-    pub fn draw(&self, device: &Device, command_buffer: CommandBuffer) {
         command_buffer.draw(device, 3, 1, 0, 0);
+    }
+
+    fn begin_rendering(&self, command_buffer: CommandBuffer, current_image: usize) {
+        todo!()
+    }
+
+    fn create_uniform_buffers() {
+        todo!()
     }
 }

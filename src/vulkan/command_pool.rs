@@ -1,13 +1,13 @@
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
-use erupt::{vk, SmallVec};
+use erupt::{vk, DeviceLoader, SmallVec};
 
 pub struct CommandPool {
     handle: vk::CommandPool,
 }
 
 impl CommandPool {
-    pub fn new(device: &Device, queue_family_index: u32, reset: bool) -> Self {
+    pub fn new(device: &DeviceLoader, queue_family_index: u32, reset: bool) -> Self {
         let create_info = vk::CommandPoolCreateInfoBuilder::new()
             .queue_family_index(queue_family_index)
             .flags(if reset {
@@ -15,12 +15,7 @@ impl CommandPool {
             } else {
                 vk::CommandPoolCreateFlags::empty()
             });
-        let command_pool = unsafe {
-            device
-                .handle()
-                .create_command_pool(&create_info, None)
-                .unwrap()
-        };
+        let command_pool = unsafe { device.create_command_pool(&create_info, None).unwrap() };
 
         Self {
             handle: command_pool,
@@ -33,18 +28,13 @@ impl CommandPool {
         }
     }
 
-    pub fn allocate(&self, device: &Device, count: u32) -> Vec<CommandBuffer> {
+    pub fn allocate(&self, device: &DeviceLoader, count: u32) -> Vec<CommandBuffer> {
         let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
             .command_pool(self.handle)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(count);
 
-        let command_buffers = unsafe {
-            device
-                .handle()
-                .allocate_command_buffers(&alloc_info)
-                .unwrap()
-        };
+        let command_buffers = unsafe { device.allocate_command_buffers(&alloc_info).unwrap() };
 
         command_buffers
             .iter()

@@ -1,7 +1,6 @@
 use egui::Visuals;
 use egui_winit::winit::window::Window;
 use glam::Vec3;
-use std::rc::Rc;
 use winit::event::WindowEvent;
 
 pub struct Settings {
