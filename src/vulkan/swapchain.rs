@@ -95,10 +95,11 @@ impl Swapchain {
         instance: &Instance,
         device: &Device,
         timeout_ns: u64,
-    ) -> VulkanResult<AcquiredFrame> {
+    ) -> AcquiredFrame {
         unsafe {
             self.handle
                 .acquire(instance.handle(), device.handle(), timeout_ns)
+                .unwrap()
         }
     }
 
@@ -109,10 +110,11 @@ impl Swapchain {
         queue: vk::Queue,
         render_complete: vk::Semaphore,
         image_index: usize,
-    ) -> VulkanResult<()> {
+    ) {
         unsafe {
             self.handle
                 .queue_present(device.handle(), queue, render_complete, image_index)
+                .unwrap();
         }
     }
 

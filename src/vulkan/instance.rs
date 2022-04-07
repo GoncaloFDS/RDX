@@ -43,6 +43,7 @@ impl Instance {
     pub fn handle(&self) -> &InstanceLoader {
         &self.handle
     }
+    
     pub fn metadata(&self) -> &InstanceMetadata {
         &self.metadata
     }

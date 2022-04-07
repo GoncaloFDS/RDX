@@ -1,4 +1,5 @@
 use crate::triangle_pass::TrianglePass;
+use crate::user_interface::UserInterface;
 use crate::vulkan::command_pool::CommandPool;
 use crate::vulkan::device::Device;
 use crate::vulkan::frame::Frame;
@@ -11,9 +12,12 @@ use crate::vulkan::swapchain::Swapchain;
 use erupt::{vk, SmallVec};
 use std::slice;
 use std::time::Instant;
-use winit::window::Window;
+use winit::event::{Event, VirtualKeyCode, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::{Window, WindowBuilder};
 
 pub struct App {
+    window: Window,
     device: Device,
     instance: Instance,
     surface: Surface,
@@ -23,14 +27,19 @@ pub struct App {
     command_pool: CommandPool,
     frames: Vec<Frame>,
     triangle_pass: TrianglePass,
+    ui: UserInterface,
 }
 
 impl App {
-    pub fn new(window: &Window) -> Self {
-        let instance = Instance::new(window);
-        let surface = Surface::new(&instance, window);
+    pub fn new() -> (Self, EventLoop<()>) {
+        log::info!("Starting RDX");
+        let event_loop = EventLoop::new();
+        let window = WindowBuilder::new().build(&event_loop).unwrap();
+
+        let instance = Instance::new(&window);
+        let surface = Surface::new(&instance, &window);
         let device = Device::new(&instance, surface);
-        let swapchain = Swapchain::new(window, &instance, surface, &device);
+        let swapchain = Swapchain::new(&window, &instance, surface, &device);
 
         let command_pool = CommandPool::new(&device, device.queue_index(), true);
         let command_buffers = command_pool.allocate(&device, swapchain.frames_in_flight() as u32);
@@ -44,7 +53,10 @@ impl App {
 
         let triangle_pass = TrianglePass::new(&device, swapchain.surface_format());
 
-        App {
+        let ui = UserInterface::new(&window);
+
+        let app = App {
+            window,
             device,
             instance,
             surface,
@@ -54,6 +66,42 @@ impl App {
             command_pool,
             frames,
             triangle_pass,
+            ui,
+        };
+
+        (app, event_loop)
+    }
+
+    pub fn on_event(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
+        *control_flow = ControlFlow::Poll;
+        match event {
+            Event::WindowEvent { event, .. } => {
+                let ui_captured_input = self.ui.on_event(&event);
+                if ui_captured_input {
+                    return;
+                }
+
+                match event {
+                    WindowEvent::CloseRequested => {
+                        log::info!("Closing Window");
+                        *control_flow = ControlFlow::Exit
+                    }
+                    WindowEvent::Resized(size) => self.resize(vk::Extent2D {
+                        width: size.width,
+                        height: size.height,
+                    }),
+                    WindowEvent::KeyboardInput { input, .. } => {
+                        if input.virtual_keycode == Some(VirtualKeyCode::Escape) {
+                            *control_flow = ControlFlow::Exit;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Event::MainEventsCleared => {
+                self.draw();
+            }
+            _ => (),
         }
     }
 
@@ -62,36 +110,17 @@ impl App {
     }
 
     pub fn draw(&mut self) {
-        let acq = self
+        let acquired_frame = self
             .swapchain
-            .acquire(&self.instance, &self.device, u64::MAX)
-            .unwrap();
+            .acquire(&self.instance, &self.device, u64::MAX);
 
-        // Recreate swapchain image views when necessary
-        if acq.invalidate_images {
-            for image_view in &self.swapchain_image_views {
-                image_view.destoy(&self.device);
-            }
-
-            let format = self.swapchain.format();
-            self.swapchain_image_views = self
-                .swapchain
-                .images()
-                .iter()
-                .map(|&swapchain_image| {
-                    ImageView::new(
-                        &self.device,
-                        swapchain_image,
-                        format.format,
-                        vk::ImageAspectFlags::COLOR,
-                    )
-                })
-                .collect();
+        if acquired_frame.invalidate_images {
+            self.recreate_swapchain();
         }
 
-        let in_flight = &self.frames[acq.frame_index];
-        let swapchain_image = self.swapchain.images()[acq.image_index];
-        let swapchain_image_view = self.swapchain_image_views[acq.image_index];
+        let in_flight = &self.frames[acquired_frame.frame_index];
+        let swapchain_image = self.swapchain.images()[acquired_frame.image_index];
+        let swapchain_image_view = self.swapchain_image_views[acquired_frame.image_index];
 
         let extend = self.swapchain.extent();
         let rect = vk::Rect2DBuilder::new().extent(extend);
@@ -101,7 +130,7 @@ impl App {
         in_flight.command_buffer.bind_pipeline(
             &self.device,
             vk::PipelineBindPoint::GRAPHICS,
-            self.triangle_pass.pipeline.handle(),
+            self.triangle_pass.pipeline().handle(),
         );
 
         in_flight
@@ -169,29 +198,47 @@ impl App {
             vk::ImageLayout::PRESENT_SRC_KHR,
         );
 
-        // Submit commands and queue present
         in_flight.command_buffer.end(&self.device);
 
         self.device.submit(
             &[vk::SemaphoreSubmitInfoBuilder::new()
-                .semaphore(acq.ready)
+                .semaphore(acquired_frame.ready)
                 .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)],
             &[vk::SemaphoreSubmitInfoBuilder::new()
                 .semaphore(in_flight.complete.handle())
                 .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)],
             &[vk::CommandBufferSubmitInfoBuilder::new()
                 .command_buffer(in_flight.command_buffer.handle())],
-            acq.complete,
+            acquired_frame.complete,
         );
 
-        self.swapchain
-            .queue_present(
-                &self.device,
-                self.device.queue(),
-                in_flight.complete.handle(),
-                acq.image_index,
-            )
-            .unwrap();
+        self.swapchain.queue_present(
+            &self.device,
+            self.device.queue(),
+            in_flight.complete.handle(),
+            acquired_frame.image_index,
+        );
+    }
+
+    fn recreate_swapchain(&mut self) {
+        for image_view in &self.swapchain_image_views {
+            image_view.destoy(&self.device);
+        }
+
+        let format = self.swapchain.format();
+        self.swapchain_image_views = self
+            .swapchain
+            .images()
+            .iter()
+            .map(|&swapchain_image| {
+                ImageView::new(
+                    &self.device,
+                    swapchain_image,
+                    format.format,
+                    vk::ImageAspectFlags::COLOR,
+                )
+            })
+            .collect();
     }
 }
 

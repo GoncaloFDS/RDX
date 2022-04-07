@@ -6,12 +6,12 @@ use crate::vulkan::shader_module::{Shader, ShaderModule};
 use erupt::{vk, ExtendableFrom};
 use std::slice;
 
-pub struct TrianglePass {
+pub struct UIPass {
     pipeline: GraphicsPipeline,
     pipeline_layout: PipelineLayout,
 }
 
-impl TrianglePass {
+impl UIPass {
     pub fn new(device: &Device, surface_format: vk::SurfaceFormatKHR) -> Self {
         let shader_module = ShaderModule::new(device, Shader::Raster);
 
@@ -34,8 +34,14 @@ impl TrianglePass {
         let viewport_state = vk::PipelineViewportStateCreateInfoBuilder::new()
             .scissor_count(1)
             .viewport_count(1);
-        let rasterization_state =
-            vk::PipelineRasterizationStateCreateInfoBuilder::new().line_width(1.0);
+        let rasterization_state = vk::PipelineRasterizationStateCreateInfoBuilder::new()
+            .depth_clamp_enable(false)
+            .rasterizer_discard_enable(false)
+            .polygon_mode(vk::PolygonMode::FILL)
+            .line_width(1.0)
+            .cull_mode(vk::CullModeFlags::NONE)
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
+            .depth_bias_enable(false);
         let multisample_state = vk::PipelineMultisampleStateCreateInfoBuilder::new()
             .rasterization_samples(vk::SampleCountFlagBits::_1);
 
@@ -68,7 +74,7 @@ impl TrianglePass {
 
         shader_module.destroy(device);
 
-        TrianglePass {
+        UIPass {
             pipeline,
             pipeline_layout,
         }

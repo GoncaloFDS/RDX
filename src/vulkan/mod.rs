@@ -1,3 +1,4 @@
+pub mod buffer;
 pub mod command_buffer;
 pub mod command_pool;
 pub mod descriptor_set_layout;
@@ -13,3 +14,4 @@ pub mod shader_module;
 pub mod subresource_range;
 pub mod surface;
 pub mod swapchain;
+mod device_memory;

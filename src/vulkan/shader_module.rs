@@ -4,9 +4,11 @@ use std::ffi::CStr;
 
 pub enum Shader {
     Raster,
+    UI,
 }
 
 const RASTER_BYTES: &[u8] = include_bytes!(env!("raster.spv"));
+const UI_BYTES: &[u8] = include_bytes!(env!("ui.spv"));
 
 pub struct ShaderModule {
     handle: vk::ShaderModule,
@@ -16,6 +18,7 @@ impl ShaderModule {
     pub fn new(device: &Device, shader: Shader) -> Self {
         let bytes = match shader {
             Shader::Raster => RASTER_BYTES,
+            Shader::UI => UI_BYTES,
         };
         let code = erupt::utils::decode_spv(bytes).unwrap();
         let module_info = vk::ShaderModuleCreateInfoBuilder::new().code(&code);

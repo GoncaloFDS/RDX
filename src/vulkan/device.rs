@@ -2,12 +2,15 @@ use crate::vulkan::instance::Instance;
 use crate::vulkan::surface::Surface;
 use erupt::{vk, DeviceLoader, ExtendableFrom};
 use erupt_bootstrap::{DeviceBuilder, DeviceMetadata, QueueFamilyCriteria};
+use gpu_alloc::GpuAllocator;
+use gpu_alloc_erupt::EruptMemoryDevice;
 
 pub struct Device {
     handle: DeviceLoader,
     metadata: DeviceMetadata,
     queue: vk::Queue,
     queue_index: u32,
+    allocator: GpuAllocator<vk::DeviceMemory>,
 }
 
 impl Device {
@@ -45,11 +48,19 @@ impl Device {
             .unwrap()
             .unwrap();
 
+        let allocator_properties = unsafe {
+            gpu_alloc_erupt::device_properties(instance.handle(), metadata.physical_device())
+                .unwrap()
+        };
+        let allocator =
+            GpuAllocator::new(gpu_alloc::Config::i_am_prototyping(), allocator_properties);
+
         Device {
             handle: device,
             metadata,
             queue,
             queue_index,
+            allocator,
         }
     }
 
@@ -96,6 +107,26 @@ impl Device {
             self.handle
                 .queue_submit2(self.queue, &[submit_info], fence)
                 .unwrap();
+        }
+    }
+
+    pub fn allocate_memory(
+        &mut self,
+        memory_requirements: vk::MemoryRequirements,
+        allocation_flags: gpu_alloc::UsageFlags,
+    ) -> gpu_alloc::MemoryBlock<vk::DeviceMemory> {
+        unsafe {
+            self.allocator
+                .alloc(
+                    EruptMemoryDevice::wrap(&self.handle),
+                    gpu_alloc::Request {
+                        size: memory_requirements.size,
+                        align_mask: memory_requirements.alignment - 1,
+                        usage: allocation_flags,
+                        memory_types: memory_requirements.memory_type_bits,
+                    },
+                )
+                .unwrap()
         }
     }
 }
