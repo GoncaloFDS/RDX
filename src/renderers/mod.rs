@@ -1,3 +1,4 @@
+use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
 
@@ -12,4 +13,8 @@ pub trait Renderer {
         command_buffer: &CommandBuffer,
         current_image: usize,
     );
+
+    fn update(&mut self, device: &mut Device, ui: &mut UserInterface);
+
+    fn destroy(&mut self, device: &mut Device);
 }

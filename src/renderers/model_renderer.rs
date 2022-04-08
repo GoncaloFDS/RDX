@@ -1,4 +1,5 @@
 use crate::renderers::Renderer;
+use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::pipeline_layout::PipelineLayout;
@@ -13,7 +14,7 @@ pub struct ModelRenderer {
 }
 
 impl ModelRenderer {
-    pub fn new(device: &Device, surface_format: vk::SurfaceFormatKHR) -> Self {
+    pub fn new(device: &Device) -> Self {
         let shader_module = ShaderModule::new(device, Shader::Raster);
 
         let shader_stages = [
@@ -23,6 +24,7 @@ impl ModelRenderer {
 
         let pipeline_layout = PipelineLayout::new(device, &[], &[]);
 
+        let surface_format = device.surface_format();
         let mut pipeline_rendering_info = vk::PipelineRenderingCreateInfoBuilder::new()
             .color_attachment_formats(slice::from_ref(&surface_format.format));
 
@@ -90,5 +92,12 @@ impl Renderer for ModelRenderer {
         );
 
         command_buffer.draw(device, 3, 1, 0, 0);
+    }
+
+    fn update(&mut self, _device: &mut Device, _ui: &mut UserInterface) {}
+
+    fn destroy(&mut self, device: &mut Device) {
+        self.pipeline_layout.destroy(&device);
+        self.pipeline.destroy(&device);
     }
 }

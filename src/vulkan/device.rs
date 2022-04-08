@@ -7,7 +7,7 @@ use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
 use erupt::{vk, DeviceLoader, ExtendableFrom};
 use erupt_bootstrap::{AcquiredFrame, DeviceBuilder, DeviceMetadata, QueueFamilyCriteria};
-use gpu_alloc::GpuAllocator;
+use gpu_alloc::{GpuAllocator, MemoryBlock};
 use gpu_alloc_erupt::EruptMemoryDevice;
 use winit::window::Window;
 
@@ -97,8 +97,25 @@ impl Device {
         }
     }
 
-    pub fn destroy(&self) {
+    pub fn destroy(&mut self) {
+        for frame in &self.frames {
+            frame.destroy(self);
+        }
+
+        for swapchain_image_views in &self.swapchain_image_views {
+            swapchain_image_views.destroy(self);
+        }
+        self.command_pool.free_command_buffers(
+            &self,
+            &self
+                .frames
+                .iter()
+                .map(|frame| frame.command_buffer)
+                .collect::<Vec<_>>(),
+        );
+        self.command_pool.destroy(&self);
         unsafe {
+            self.swapchain.as_mut().destroy(&self.handle);
             self.handle.destroy_device(None);
         }
     }
@@ -157,7 +174,7 @@ impl Device {
 
     pub fn recreate_swapchain(&mut self) {
         for image_view in &self.swapchain_image_views {
-            image_view.destoy(&self.handle)
+            image_view.destroy(&self)
         }
 
         let format = self.swapchain.format();
@@ -227,6 +244,13 @@ impl Device {
                     },
                 )
                 .unwrap()
+        }
+    }
+
+    pub fn dealloc_memory(&mut self, memory_block: MemoryBlock<vk::DeviceMemory>) {
+        unsafe {
+            self.allocator
+                .dealloc(EruptMemoryDevice::wrap(&self.handle), memory_block);
         }
     }
 }

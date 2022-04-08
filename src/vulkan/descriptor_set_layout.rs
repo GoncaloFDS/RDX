@@ -33,6 +33,15 @@ impl DescriptorSetLayout {
             handle: descriptor_set_layout,
         }
     }
+
+    pub fn destroy(&self, device: &Device) {
+        unsafe {
+            device
+                .handle()
+                .destroy_descriptor_set_layout(self.handle, None);
+        }
+    }
+
     pub fn handle(&self) -> vk::DescriptorSetLayout {
         self.handle
     }

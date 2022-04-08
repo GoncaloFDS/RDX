@@ -1,5 +1,4 @@
 use crate::vulkan::buffer::Buffer;
-use crate::vulkan::command_pool::CommandPool;
 use crate::vulkan::device::Device;
 use crate::vulkan::image::Image;
 use crate::vulkan::image_view::ImageView;
@@ -15,7 +14,7 @@ pub struct TextureImage {
 
 impl TextureImage {
     pub fn new(device: &mut Device, texture: &Texture) -> Self {
-        let staging_buffer =
+        let mut staging_buffer =
             Buffer::with_data(device, texture.pixels(), vk::BufferUsageFlags::TRANSFER_SRC);
 
         let mut image = Image::new(
@@ -47,11 +46,18 @@ impl TextureImage {
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         );
 
+        staging_buffer.destroy(device);
         TextureImage {
             image,
             image_view,
             sampler,
         }
+    }
+
+    pub fn destroy(&mut self, device: &mut Device) {
+        self.sampler.destroy(device);
+        self.image_view.destroy(device);
+        self.image.destroy(device);
     }
 }
 

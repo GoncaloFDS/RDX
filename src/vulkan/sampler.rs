@@ -1,6 +1,5 @@
 use crate::vulkan::device::Device;
 use erupt::vk;
-use std::rc::Rc;
 
 pub struct SamplerInfo {
     mag_filter: vk::Filter,
@@ -67,6 +66,10 @@ impl Sampler {
         let sampler = unsafe { device.handle().create_sampler(&create_info, None).unwrap() };
 
         Sampler { handle: sampler }
+    }
+
+    pub fn destroy(&self, device: &mut Device) {
+        unsafe { device.handle().destroy_sampler(self.handle, None) }
     }
 
     pub fn handle(&self) -> vk::Sampler {

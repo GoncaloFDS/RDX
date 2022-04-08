@@ -70,6 +70,15 @@ impl DescriptorSetManager {
         }
     }
 
+    pub fn destroy(&self, device: &Device) {
+        self.descriptor_set_layout.destroy(device);
+        unsafe {
+            device
+                .handle()
+                .destroy_descriptor_pool(self.descriptor_pool, None)
+        }
+    }
+
     pub fn bind_buffer<'a>(
         &self,
         index: u32,

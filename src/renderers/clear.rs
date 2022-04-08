@@ -1,4 +1,5 @@
 use crate::renderers::Renderer;
+use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
 use erupt::vk;
@@ -53,4 +54,13 @@ impl Renderer for Clear {
 
         command_buffer.begin_rendering(device, &rendering_info);
     }
+
+    fn update(&mut self, device: &mut Device, _ui: &mut UserInterface) {
+        self.render_area = vk::Rect2D {
+            offset: Default::default(),
+            extent: device.swapchain().extent(),
+        };
+    }
+
+    fn destroy(&mut self, _device: &mut Device) {}
 }

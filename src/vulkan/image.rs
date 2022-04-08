@@ -4,8 +4,6 @@ use crate::vulkan::depth_buffer::DepthBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::device_memory::DeviceMemory;
 use erupt::vk;
-use std::ops::Deref;
-use std::rc::Rc;
 
 pub struct Image {
     handle: vk::Image,
@@ -50,6 +48,15 @@ impl Image {
             extent,
             format,
             image_layout,
+        }
+    }
+
+    pub fn destroy(&mut self, device: &mut Device) {
+        unsafe {
+            if let Some(memory) = self.device_memory.as_mut() {
+                memory.destroy(device)
+            }
+            device.handle().destroy_image(self.handle, None)
         }
     }
 

@@ -13,9 +13,10 @@ use crate::vulkan::texture::Texture;
 use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::vertex::{EguiVertex, Vertex};
 use bytemuck::{Pod, Zeroable};
-use egui::ImageData;
+use egui::{ImageData, TextureId};
 use erupt::{vk, ExtendableFrom};
 use glam::{vec2, vec4, Vec2};
+use std::collections::HashMap;
 use std::mem::size_of;
 use std::slice;
 
@@ -25,8 +26,9 @@ const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
 
 #[derive(Copy, Clone, Default)]
 struct EguiPushConstant {
-    scree_size: Vec2,
+    screen_size: Vec2,
 }
+
 unsafe impl Zeroable for EguiPushConstant {}
 unsafe impl Pod for EguiPushConstant {}
 
@@ -44,10 +46,11 @@ pub struct EguiRenderer {
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     draw_indexed: Vec<DrawIndexed>,
+    textures: HashMap<TextureId, TextureImage>,
 }
 
 impl EguiRenderer {
-    pub fn new(device: &mut Device, ui: &UserInterface) -> Self {
+    pub fn new(device: &mut Device, _ui: &UserInterface) -> Self {
         let binding_descriptions = EguiVertex::binding_descriptions();
         let attribute_descriptions = EguiVertex::attribute_descriptions();
         let vertex_input_state = vk::PipelineVertexInputStateCreateInfoBuilder::new()
@@ -165,8 +168,6 @@ impl EguiRenderer {
             gpu_alloc::UsageFlags::HOST_ACCESS | gpu_alloc::UsageFlags::DEVICE_ADDRESS,
         );
 
-        // update descriptor set
-
         EguiRenderer {
             pipeline,
             pipeline_layout,
@@ -174,10 +175,11 @@ impl EguiRenderer {
             vertex_buffer,
             index_buffer,
             draw_indexed: vec![],
+            textures: Default::default(),
         }
     }
 
-    pub fn update_buffers(&mut self, device: &Device, ui: &mut UserInterface) {
+    fn update_buffers(&mut self, device: &Device, ui: &mut UserInterface) {
         let mut vertex_start = 0;
         let mut index_start = 0;
         self.draw_indexed.clear();
@@ -220,9 +222,9 @@ impl EguiRenderer {
         }
     }
 
-    pub fn update_textures(&mut self, device: &mut Device, ui: &UserInterface) {
+    fn update_textures(&mut self, device: &mut Device, ui: &UserInterface) {
         let textures_delta = ui.textures_delta();
-        for texture_id in &textures_delta.free {
+        for _texture_id in &textures_delta.free {
             // free texture
             todo!()
         }
@@ -261,6 +263,8 @@ impl EguiRenderer {
                 self.descriptor_set_manager
                     .update_descriptors(device, &descriptor_writes);
             });
+
+            self.textures.insert(*texture_id, texture_image);
         }
     }
 }
@@ -287,7 +291,7 @@ impl Renderer for EguiRenderer {
 
         let extent = device.swapchain().extent();
         let push_constants = EguiPushConstant {
-            scree_size: vec2(extent.width as f32, extent.height as f32),
+            screen_size: vec2(extent.width as f32, extent.height as f32),
         };
 
         command_buffer.push_constants(
@@ -307,5 +311,21 @@ impl Renderer for EguiRenderer {
             command_buffer.bind_index_buffer(device, &self.index_buffer, draw_indexed.index_offset);
             command_buffer.draw_indexed(device, draw_indexed.index_count);
         }
+    }
+
+    fn update(&mut self, device: &mut Device, ui: &mut UserInterface) {
+        self.update_buffers(device, ui);
+        self.update_textures(device, ui);
+    }
+
+    fn destroy(&mut self, device: &mut Device) {
+        self.textures
+            .iter_mut()
+            .for_each(|(_, texture)| texture.destroy(device));
+        self.descriptor_set_manager.destroy(device);
+        self.vertex_buffer.destroy(device);
+        self.index_buffer.destroy(device);
+        self.pipeline_layout.destroy(device);
+        self.pipeline.destroy(device);
     }
 }

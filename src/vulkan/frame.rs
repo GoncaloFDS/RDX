@@ -1,4 +1,5 @@
 use crate::vulkan::command_buffer::CommandBuffer;
+use crate::vulkan::device::Device;
 use crate::vulkan::semaphore::Semaphore;
 
 pub struct Frame {
@@ -7,10 +8,14 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(cmd: CommandBuffer, complete: Semaphore) -> Self {
+    pub fn new(command_buffer: CommandBuffer, semaphore: Semaphore) -> Self {
         Self {
-            command_buffer: cmd,
-            semaphore: complete,
+            command_buffer,
+            semaphore,
         }
+    }
+
+    pub fn destroy(&self, device: &Device) {
+        self.semaphore.destroy(device);
     }
 }

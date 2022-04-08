@@ -124,4 +124,8 @@ impl Swapchain {
             self.handle.destroy(device.handle());
         }
     }
+
+    pub fn as_mut(&mut self) -> &mut erupt_bootstrap::Swapchain {
+        &mut self.handle
+    }
 }

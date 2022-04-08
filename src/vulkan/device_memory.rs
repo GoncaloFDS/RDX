@@ -20,6 +20,10 @@ impl DeviceMemory {
         DeviceMemory { memory_block }
     }
 
+    pub unsafe fn destroy(&mut self, device: &mut Device) {
+        device.dealloc_memory(ManuallyDrop::take(&mut self.memory_block))
+    }
+
     pub fn bind_to_buffer(&self, device: &Device, buffer: vk::Buffer) {
         unsafe {
             device

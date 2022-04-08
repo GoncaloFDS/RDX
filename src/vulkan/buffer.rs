@@ -52,6 +52,15 @@ impl Buffer {
         buffer
     }
 
+    pub fn destroy(&mut self, device: &mut Device) {
+        unsafe {
+            if let Some(memory) = self.device_memory.as_mut() {
+                memory.destroy(device)
+            }
+            device.handle().destroy_buffer(self.handle, None);
+        }
+    }
+
     pub fn handle(&self) -> vk::Buffer {
         self.handle
     }

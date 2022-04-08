@@ -15,9 +15,8 @@ pub struct App {
     window: Window,
     device: Device,
     instance: Instance,
-    clear: Clear,
-    model_renderer: ModelRenderer,
-    egui_renderer: EguiRenderer,
+    render_queue: Vec<Box<dyn Renderer>>,
+
     ui: UserInterface,
 }
 
@@ -33,16 +32,22 @@ impl App {
         let ui = UserInterface::new(&window);
 
         let clear = Clear::new(&device);
-        let model_renderer = ModelRenderer::new(&device, device.surface_format());
+        let model_renderer = ModelRenderer::new(&device);
         let egui_renderer = EguiRenderer::new(&mut device, &ui);
+        let render_queue: Vec<Box<dyn Renderer>> = vec![
+            Box::new(clear),
+            Box::new(model_renderer),
+            Box::new(egui_renderer),
+        ];
 
         let app = App {
             window,
             device,
             instance,
-            clear,
-            model_renderer,
-            egui_renderer,
+            render_queue,
+            // clear,
+            // model_renderer,
+            // egui_renderer,
             ui,
         };
 
@@ -84,15 +89,18 @@ impl App {
 
     pub fn resize(&mut self, size: vk::Extent2D) {
         self.device.resize_swapchain(size);
-        self.clear = Clear::new(&self.device);
     }
 
     pub fn draw(&mut self) {
         self.ui.update(&self.window);
-        self.egui_renderer
-            .update_buffers(&self.device, &mut self.ui);
-        self.egui_renderer
-            .update_textures(&mut self.device, &self.ui);
+        self.render_queue
+            .iter_mut()
+            .for_each(|renderer| renderer.update(&mut self.device, &mut self.ui));
+
+        // self.egui_renderer
+        //     .update_buffers(&self.device, &mut self.ui);
+        // self.egui_renderer
+        //     .update_textures(&mut self.device, &self.ui);
 
         let acquired_frame = self
             .device
@@ -103,7 +111,7 @@ impl App {
         }
 
         let command_buffer = self.device.command_buffer(acquired_frame.frame_index);
-        let semaphore = self.device.semaphore(acquired_frame.frame_index);
+        let semaphore = self.device.semaphore(acquired_frame.frame_index).handle();
 
         command_buffer.begin(&self.device, vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
 
@@ -121,20 +129,9 @@ impl App {
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         );
 
-        self.clear
-            .fill_command_buffer(&self.device, command_buffer, acquired_frame.image_index);
-
-        self.model_renderer.fill_command_buffer(
-            &self.device,
-            command_buffer,
-            acquired_frame.image_index,
-        );
-
-        self.egui_renderer.fill_command_buffer(
-            &self.device,
-            command_buffer,
-            acquired_frame.image_index,
-        );
+        self.render_queue.iter().for_each(|renderer| {
+            renderer.fill_command_buffer(&self.device, command_buffer, acquired_frame.image_index)
+        });
 
         command_buffer.end_rendering(&self.device);
 
@@ -157,17 +154,14 @@ impl App {
                 .semaphore(acquired_frame.ready)
                 .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)],
             &[vk::SemaphoreSubmitInfoBuilder::new()
-                .semaphore(semaphore.handle())
+                .semaphore(semaphore)
                 .stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)],
             &[vk::CommandBufferSubmitInfoBuilder::new().command_buffer(command_buffer.handle())],
             acquired_frame.complete,
         );
 
-        self.device.queue_present(
-            self.device.queue(),
-            semaphore.handle(),
-            acquired_frame.image_index,
-        );
+        self.device
+            .queue_present(self.device.queue(), semaphore, acquired_frame.image_index);
     }
 
     fn recreate_swapchain(&mut self) {
@@ -177,6 +171,10 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
+        self.device.wait_idle();
+        self.render_queue
+            .iter_mut()
+            .for_each(|renderer| renderer.destroy(&mut self.device));
         self.device.wait_idle();
         self.device.destroy();
         self.instance.destroy();
