@@ -1,3 +1,4 @@
+use crate::renderers::Renderer;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::pipeline_layout::PipelineLayout;
@@ -6,12 +7,12 @@ use crate::vulkan::shader_module::{Shader, ShaderModule};
 use erupt::{vk, ExtendableFrom};
 use std::slice;
 
-pub struct UIPass {
+pub struct ModelRenderer {
     pipeline: GraphicsPipeline,
     pipeline_layout: PipelineLayout,
 }
 
-impl UIPass {
+impl ModelRenderer {
     pub fn new(device: &Device, surface_format: vk::SurfaceFormatKHR) -> Self {
         let shader_module = ShaderModule::new(device, Shader::Raster);
 
@@ -34,14 +35,8 @@ impl UIPass {
         let viewport_state = vk::PipelineViewportStateCreateInfoBuilder::new()
             .scissor_count(1)
             .viewport_count(1);
-        let rasterization_state = vk::PipelineRasterizationStateCreateInfoBuilder::new()
-            .depth_clamp_enable(false)
-            .rasterizer_discard_enable(false)
-            .polygon_mode(vk::PolygonMode::FILL)
-            .line_width(1.0)
-            .cull_mode(vk::CullModeFlags::NONE)
-            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-            .depth_bias_enable(false);
+        let rasterization_state =
+            vk::PipelineRasterizationStateCreateInfoBuilder::new().line_width(1.0);
         let multisample_state = vk::PipelineMultisampleStateCreateInfoBuilder::new()
             .rasterization_samples(vk::SampleCountFlagBits::_1);
 
@@ -74,26 +69,26 @@ impl UIPass {
 
         shader_module.destroy(device);
 
-        UIPass {
+        ModelRenderer {
             pipeline,
             pipeline_layout,
         }
     }
+}
 
-    pub fn destroy(&self, device: &Device) {
-        self.pipeline.destroy(device);
-        self.pipeline_layout.destroy(device);
-    }
+impl Renderer for ModelRenderer {
+    fn fill_command_buffer(
+        &self,
+        device: &Device,
+        command_buffer: &CommandBuffer,
+        _current_image: usize,
+    ) {
+        command_buffer.bind_pipeline(
+            device,
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline.handle(),
+        );
 
-    pub fn pipeline(&self) -> &GraphicsPipeline {
-        &self.pipeline
-    }
-
-    pub fn pipeline_layout(&self) -> &PipelineLayout {
-        &self.pipeline_layout
-    }
-
-    pub fn draw(&self, device: &Device, command_buffer: CommandBuffer) {
         command_buffer.draw(device, 3, 1, 0, 0);
     }
 }

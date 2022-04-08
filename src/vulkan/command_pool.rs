@@ -53,4 +53,45 @@ impl CommandPool {
                 .free_command_buffers(self.handle, &command_buffer_handles);
         }
     }
+
+    pub fn single_time_submit(
+        device: &Device,
+        command_pool: &CommandPool,
+        action: impl FnOnce(CommandBuffer),
+    ) {
+        let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
+            .command_pool(command_pool.handle)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+
+        let command_buffer = unsafe {
+            device
+                .handle()
+                .allocate_command_buffers(&alloc_info)
+                .unwrap()[0]
+        };
+
+        let command_buffer = CommandBuffer::new(command_buffer);
+
+        command_buffer.begin(device, vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        action(command_buffer);
+
+        command_buffer.end(device);
+
+        let submit_buffers = [command_buffer.handle()];
+        let submit_info = vk::SubmitInfoBuilder::new().command_buffers(&submit_buffers);
+
+        let graphics_queue = device.queue();
+
+        unsafe {
+            device
+                .handle()
+                .queue_submit(graphics_queue, &[submit_info], vk::Fence::null())
+                .unwrap();
+            device.wait_idle();
+
+            // device.free_command_buffers(command_pool.handle, &[command_buffer.handle()])
+        }
+    }
 }

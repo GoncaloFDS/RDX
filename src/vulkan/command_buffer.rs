@@ -1,4 +1,6 @@
+use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
+use bytemuck::{cast_slice, Pod};
 use erupt::vk;
 
 #[derive(Copy, Clone)]
@@ -15,9 +17,8 @@ impl CommandBuffer {
         self.handle
     }
 
-    pub fn begin(&self, device: &Device) {
-        let begin_info = vk::CommandBufferBeginInfoBuilder::new()
-            .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
+    pub fn begin(&self, device: &Device, usage: vk::CommandBufferUsageFlags) {
+        let begin_info = vk::CommandBufferBeginInfoBuilder::new().flags(usage);
 
         unsafe {
             device
@@ -53,6 +54,48 @@ impl CommandBuffer {
             device
                 .handle()
                 .cmd_bind_pipeline(self.handle, bind_point, pipeline);
+        }
+    }
+
+    pub fn bind_vertex_buffer(&self, device: &Device, vertex_buffers: &[&Buffer], offsets: &[u64]) {
+        let vertex_buffers = vertex_buffers
+            .iter()
+            .map(|buffer| buffer.handle())
+            .collect::<Vec<_>>();
+        unsafe {
+            device
+                .handle()
+                .cmd_bind_vertex_buffers(self.handle, 0, &vertex_buffers, offsets);
+        }
+    }
+
+    pub fn bind_index_buffer(&self, device: &Device, index_buffer: &Buffer, offset: u64) {
+        unsafe {
+            device.handle().cmd_bind_index_buffer(
+                self.handle,
+                index_buffer.handle(),
+                offset,
+                vk::IndexType::UINT32,
+            )
+        }
+    }
+
+    pub fn bind_descriptor_sets(
+        &self,
+        device: &Device,
+        pipeline_bind_point: vk::PipelineBindPoint,
+        pipeline_layout: vk::PipelineLayout,
+        descriptor_sets: &[vk::DescriptorSet],
+    ) {
+        unsafe {
+            device.handle().cmd_bind_descriptor_sets(
+                self.handle,
+                pipeline_bind_point,
+                pipeline_layout,
+                0,
+                descriptor_sets,
+                &[],
+            );
         }
     }
 
@@ -126,5 +169,35 @@ impl CommandBuffer {
                 first_instance,
             );
         }
+    }
+
+    pub fn draw_indexed(&self, device: &Device, index_count: u32) {
+        unsafe {
+            device
+                .handle()
+                .cmd_draw_indexed(self.handle, index_count, 1, 0, 0, 0);
+        }
+    }
+
+    pub fn push_constants<T: Pod>(
+        &self,
+        device: &Device,
+        layout: vk::PipelineLayout,
+        stages: vk::ShaderStageFlags,
+        offset: u32,
+        push_constants: &T,
+    ) {
+        let slice = [*push_constants];
+        let data: &[u8] = cast_slice(&slice);
+        unsafe {
+            device.handle().cmd_push_constants(
+                self.handle,
+                layout,
+                stages,
+                offset,
+                data.len() as u32,
+                data.as_ptr() as *const _,
+            )
+        };
     }
 }

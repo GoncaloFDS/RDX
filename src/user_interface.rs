@@ -12,8 +12,9 @@ pub struct Settings {
 pub struct UserInterface {
     egui: egui::Context,
     egui_state: egui_winit::State,
-    output: egui::PlatformOutput,
+    platform_output: egui::PlatformOutput,
     clipped_meshes: Vec<egui::ClippedMesh>,
+    textures_delta: egui::TexturesDelta,
     settings: Settings,
 }
 
@@ -26,8 +27,9 @@ impl UserInterface {
         UserInterface {
             egui,
             egui_state,
-            output: Default::default(),
+            platform_output: Default::default(),
             clipped_meshes: vec![],
+            textures_delta: Default::default(),
             settings: Settings {
                 rotation: 0.0,
                 light_position: Default::default(),
@@ -36,11 +38,27 @@ impl UserInterface {
         }
     }
 
+    pub fn egui(&self) -> &egui::Context {
+        &self.egui
+    }
+
+    pub fn clipped_meshes(&self) -> &[egui::ClippedMesh] {
+        &self.clipped_meshes
+    }
+
+    pub fn textures_delta(&self) -> &egui::TexturesDelta {
+        &self.textures_delta
+    }
+
     pub fn on_event(&mut self, window_event: &WindowEvent) -> bool {
         self.egui_state.on_event(&self.egui, window_event)
     }
 
-    pub fn update(&mut self) {}
+    pub fn update(&mut self, window: &Window) {
+        self.begin_frame(window);
+        self.draw_settings();
+        self.end_frame();
+    }
 
     fn begin_frame(&mut self, window: &Window) {
         self.egui
@@ -49,7 +67,8 @@ impl UserInterface {
 
     fn end_frame(&mut self) {
         let output = self.egui.end_frame();
-        self.output = output.platform_output;
+        self.platform_output = output.platform_output;
+        self.textures_delta = output.textures_delta;
         self.clipped_meshes = self.egui.tessellate(output.shapes);
     }
 

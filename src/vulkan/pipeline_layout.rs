@@ -11,7 +11,7 @@ impl PipelineLayout {
     pub fn new(
         device: &Device,
         descriptor_set_layouts: &[&DescriptorSetLayout],
-        push_constant_ranges: &[&PushConstantRanges],
+        push_constant_ranges: &[PushConstantRanges],
     ) -> Self {
         let descriptor_set_layouts = descriptor_set_layouts
             .iter()

@@ -123,6 +123,10 @@ impl Device {
         &self.swapchain
     }
 
+    pub fn command_pool(&self) -> &CommandPool {
+        &self.command_pool
+    }
+
     pub fn swapchain_image(&self, current_image: usize) -> vk::Image {
         self.swapchain.images()[current_image]
     }

@@ -1,4 +1,7 @@
-use crate::renderer::{Clear, ModelRenderer, Renderer};
+use crate::renderers::clear::Clear;
+use crate::renderers::egui_renderer::EguiRenderer;
+use crate::renderers::model_renderer::ModelRenderer;
+use crate::renderers::Renderer;
 use crate::user_interface::UserInterface;
 use crate::vulkan::device::Device;
 use crate::vulkan::instance::Instance;
@@ -14,6 +17,7 @@ pub struct App {
     instance: Instance,
     clear: Clear,
     model_renderer: ModelRenderer,
+    egui_renderer: EguiRenderer,
     ui: UserInterface,
 }
 
@@ -24,14 +28,13 @@ impl App {
         let window = WindowBuilder::new().build(&event_loop).unwrap();
 
         let instance = Instance::new(&window);
-        let device = Device::new(&instance, &window);
+        let mut device = Device::new(&instance, &window);
 
-        // let triangle_pass = TrianglePass::new(&device, device.surface_format());
-        //
         let ui = UserInterface::new(&window);
 
         let clear = Clear::new(&device);
         let model_renderer = ModelRenderer::new(&device, device.surface_format());
+        let egui_renderer = EguiRenderer::new(&mut device, &ui);
 
         let app = App {
             window,
@@ -39,6 +42,7 @@ impl App {
             instance,
             clear,
             model_renderer,
+            egui_renderer,
             ui,
         };
 
@@ -84,6 +88,12 @@ impl App {
     }
 
     pub fn draw(&mut self) {
+        self.ui.update(&self.window);
+        self.egui_renderer
+            .update_buffers(&self.device, &mut self.ui);
+        self.egui_renderer
+            .update_textures(&mut self.device, &self.ui);
+
         let acquired_frame = self
             .device
             .acquire_swapchain_frame(&self.instance, u64::MAX);
@@ -95,7 +105,7 @@ impl App {
         let command_buffer = self.device.command_buffer(acquired_frame.frame_index);
         let semaphore = self.device.semaphore(acquired_frame.frame_index);
 
-        command_buffer.begin(&self.device);
+        command_buffer.begin(&self.device, vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
 
         let swapchain_image = self.device.swapchain_image(acquired_frame.image_index);
 
@@ -115,6 +125,12 @@ impl App {
             .fill_command_buffer(&self.device, command_buffer, acquired_frame.image_index);
 
         self.model_renderer.fill_command_buffer(
+            &self.device,
+            command_buffer,
+            acquired_frame.image_index,
+        );
+
+        self.egui_renderer.fill_command_buffer(
             &self.device,
             command_buffer,
             acquired_frame.image_index,
