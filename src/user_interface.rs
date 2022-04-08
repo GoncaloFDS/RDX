@@ -16,6 +16,8 @@ pub struct UserInterface {
     clipped_meshes: Vec<egui::ClippedMesh>,
     textures_delta: egui::TexturesDelta,
     settings: Settings,
+    display_settings: bool,
+    display_profiler: bool,
 }
 
 impl UserInterface {
@@ -35,6 +37,8 @@ impl UserInterface {
                 light_position: Default::default(),
                 text: "".to_string(),
             },
+            display_settings: false,
+            display_profiler: false,
         }
     }
 
@@ -50,13 +54,35 @@ impl UserInterface {
         &self.textures_delta
     }
 
+    pub fn settings(&self) -> &Settings {
+        &self.settings
+    }
+
+    pub fn settings_as_mut(&mut self) -> &mut Settings {
+        &mut self.settings
+    }
+
+    pub fn toggle_settings(&mut self) {
+        self.display_settings = !self.display_settings;
+    }
+
+    pub fn toggle_profiler(&mut self) {
+        self.display_profiler = !self.display_profiler;
+    }
+    
     pub fn on_event(&mut self, window_event: &WindowEvent) -> bool {
         self.egui_state.on_event(&self.egui, window_event)
     }
 
     pub fn update(&mut self, window: &Window) {
+        puffin::profile_function!();
         self.begin_frame(window);
-        self.draw_settings();
+        if self.display_settings {
+            self.draw_settings();
+        }
+        if self.display_profiler {
+            puffin_egui::profiler_window(&self.egui);
+        }
         self.end_frame();
     }
 

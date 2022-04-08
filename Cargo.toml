@@ -32,8 +32,8 @@ egui-winit = "0.17.0"
 hecs = "0.7.6"
 hecs-hierarchy = "0.7.2"
 
-puffin = "0.13.1"
-puffin_egui = "0.13.0"
+puffin = {git = "https://github.com/EmbarkStudios/puffin"}
+puffin_egui = {git = "https://github.com/EmbarkStudios/puffin"}
 
 image = "0.24.1"
 

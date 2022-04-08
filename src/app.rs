@@ -7,7 +7,7 @@ use crate::vulkan::device::Device;
 use crate::vulkan::instance::Instance;
 use crate::vulkan::subresource_range::SubresourceRange;
 use erupt::vk;
-use winit::event::{Event, VirtualKeyCode, WindowEvent};
+use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
@@ -16,13 +16,13 @@ pub struct App {
     device: Device,
     instance: Instance,
     render_queue: Vec<Box<dyn Renderer>>,
-
     ui: UserInterface,
 }
 
 impl App {
     pub fn new() -> (Self, EventLoop<()>) {
         log::info!("Starting RDX");
+        puffin::set_scopes_on(true);
         let event_loop = EventLoop::new();
         let window = WindowBuilder::new().build(&event_loop).unwrap();
 
@@ -45,9 +45,6 @@ impl App {
             device,
             instance,
             render_queue,
-            // clear,
-            // model_renderer,
-            // egui_renderer,
             ui,
         };
 
@@ -75,6 +72,14 @@ impl App {
                     WindowEvent::KeyboardInput { input, .. } => {
                         if input.virtual_keycode == Some(VirtualKeyCode::Escape) {
                             *control_flow = ControlFlow::Exit;
+                        } else if input.virtual_keycode == Some(VirtualKeyCode::F1)
+                            && input.state == ElementState::Pressed
+                        {
+                            self.ui.toggle_settings()
+                        } else if input.virtual_keycode == Some(VirtualKeyCode::F2)
+                            && input.state == ElementState::Pressed
+                        {
+                            self.ui.toggle_profiler()
                         }
                     }
                     _ => {}
@@ -92,15 +97,12 @@ impl App {
     }
 
     pub fn draw(&mut self) {
+        puffin::GlobalProfiler::lock().new_frame();
+        puffin::profile_function!();
         self.ui.update(&self.window);
         self.render_queue
             .iter_mut()
             .for_each(|renderer| renderer.update(&mut self.device, &mut self.ui));
-
-        // self.egui_renderer
-        //     .update_buffers(&self.device, &mut self.ui);
-        // self.egui_renderer
-        //     .update_textures(&mut self.device, &self.ui);
 
         let acquired_frame = self
             .device

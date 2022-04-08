@@ -224,12 +224,15 @@ impl EguiRenderer {
 
     fn update_textures(&mut self, device: &mut Device, ui: &UserInterface) {
         let textures_delta = ui.textures_delta();
-        for _texture_id in &textures_delta.free {
+        for texture_id in &textures_delta.free {
             // free texture
             todo!()
         }
 
         for (texture_id, delta) in &textures_delta.set {
+            if self.textures.contains_key(texture_id) {
+                return;
+            }
             let image_data = match &delta.image {
                 ImageData::Color(image) => image
                     .pixels
