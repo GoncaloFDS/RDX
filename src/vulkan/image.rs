@@ -11,15 +11,17 @@ pub struct Image {
     extent: vk::Extent2D,
     format: vk::Format,
     image_layout: vk::ImageLayout,
+    image_view: vk::ImageView,
 }
 
 impl Image {
     pub fn new(
-        device: &Device,
+        device: &mut Device,
         extent: vk::Extent2D,
         format: vk::Format,
-        tiling: Option<vk::ImageTiling>,
-        usage: Option<vk::ImageUsageFlags>,
+        tiling: vk::ImageTiling,
+        usage: vk::ImageUsageFlags,
+        aspect: vk::ImageAspectFlags,
     ) -> Self {
         let image_layout = vk::ImageLayout::UNDEFINED;
         let create_info = vk::ImageCreateInfoBuilder::new()
@@ -32,22 +34,51 @@ impl Image {
             .mip_levels(1)
             .array_layers(1)
             .format(format)
-            .tiling(tiling.unwrap_or(vk::ImageTiling::OPTIMAL))
+            .tiling(tiling)
             .initial_layout(image_layout)
-            .usage(
-                usage.unwrap_or(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED),
-            )
+            .usage(usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlagBits::_1);
 
         let image = unsafe { device.handle().create_image(&create_info, None).unwrap() };
 
+        let mem_reqs = { unsafe { device.handle().get_image_memory_requirements(image) } };
+
+        let device_memory = DeviceMemory::new(device, mem_reqs, gpu_alloc::UsageFlags::empty());
+        device_memory.bind_to_image(device, image);
+
+        let view_create_info = vk::ImageViewCreateInfoBuilder::new()
+            .image(image)
+            .view_type(vk::ImageViewType::_2D)
+            .format(format)
+            .components(vk::ComponentMapping {
+                r: vk::ComponentSwizzle::IDENTITY,
+                g: vk::ComponentSwizzle::IDENTITY,
+                b: vk::ComponentSwizzle::IDENTITY,
+                a: vk::ComponentSwizzle::IDENTITY,
+            })
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: aspect,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            });
+
+        let image_view = unsafe {
+            device
+                .handle()
+                .create_image_view(&view_create_info, None)
+                .unwrap()
+        };
+
         Image {
             handle: image,
-            device_memory: None,
+            device_memory: Some(device_memory),
             extent,
             format,
             image_layout,
+            image_view,
         }
     }
 
@@ -72,22 +103,12 @@ impl Image {
         self.format
     }
 
-    pub fn allocate_memory(&mut self, device: &mut Device) {
-        let mem_reqs = self.get_memory_requirements(device);
-
-        let device_memory = DeviceMemory::new(device, mem_reqs, gpu_alloc::UsageFlags::empty());
-        device_memory.bind_to_image(device, self.handle);
-
-        self.device_memory = Some(device_memory);
+    pub fn view(&self) -> vk::ImageView {
+        self.image_view
     }
 
-    pub fn transition_image_layout(
-        &mut self,
-        device: &Device,
-        command_pool: &CommandPool,
-        new_layout: vk::ImageLayout,
-    ) {
-        CommandPool::single_time_submit(device, command_pool, |command_buffer| {
+    pub fn transition_image_layout(&mut self, device: &Device, new_layout: vk::ImageLayout) {
+        CommandPool::single_time_submit(device, |command_buffer| {
             let mut aspect_mask;
             if new_layout == vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL {
                 aspect_mask = vk::ImageAspectFlags::DEPTH;
@@ -158,8 +179,8 @@ impl Image {
         self.image_layout = new_layout;
     }
 
-    pub fn copy_from(&self, device: &Device, command_pool: &CommandPool, buffer: &Buffer) {
-        CommandPool::single_time_submit(device, command_pool, |command_buffer| {
+    pub fn copy_from(&self, device: &Device, buffer: &Buffer) {
+        CommandPool::single_time_submit(device, |command_buffer| {
             let region = vk::BufferImageCopyBuilder::new()
                 .buffer_offset(0)
                 .buffer_row_length(0)
@@ -187,9 +208,5 @@ impl Image {
                 );
             }
         });
-    }
-
-    fn get_memory_requirements(&self, device: &Device) -> vk::MemoryRequirements {
-        unsafe { device.handle().get_image_memory_requirements(self.handle) }
     }
 }

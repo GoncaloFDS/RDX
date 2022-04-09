@@ -43,6 +43,8 @@ impl Swapchain {
 
         let mut swapchain_options = erupt_bootstrap::SwapchainOptions::default();
         swapchain_options.format_preference(&[surface_format]);
+        swapchain_options
+            .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST);
 
         let size = window.inner_size();
         let swapchain = erupt_bootstrap::Swapchain::new(

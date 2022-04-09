@@ -54,11 +54,8 @@ impl CommandPool {
         }
     }
 
-    pub fn single_time_submit(
-        device: &Device,
-        command_pool: &CommandPool,
-        action: impl FnOnce(CommandBuffer),
-    ) {
+    pub fn single_time_submit(device: &Device, action: impl FnOnce(CommandBuffer)) {
+        let command_pool = device.command_pool();
         let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
             .command_pool(command_pool.handle)
             .level(vk::CommandBufferLevel::PRIMARY)

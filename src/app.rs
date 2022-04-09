@@ -1,12 +1,14 @@
 use crate::renderers::clear::Clear;
 use crate::renderers::egui_renderer::EguiRenderer;
 use crate::renderers::model_renderer::ModelRenderer;
+use crate::renderers::raytracer::Raytracer;
 use crate::renderers::Renderer;
 use crate::user_interface::UserInterface;
 use crate::vulkan::device::Device;
 use crate::vulkan::instance::Instance;
-use crate::vulkan::subresource_range::SubresourceRange;
+use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
 use erupt::vk;
+use winit::dpi::{PhysicalSize, Size};
 use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
@@ -24,21 +26,22 @@ impl App {
         log::info!("Starting RDX");
         puffin::set_scopes_on(true);
         let event_loop = EventLoop::new();
-        let window = WindowBuilder::new().build(&event_loop).unwrap();
+        let window = WindowBuilder::new()
+            .with_title("RDX")
+            .with_inner_size(PhysicalSize::new(1024, 720))
+            .build(&event_loop)
+            .unwrap();
 
         let instance = Instance::new(&window);
         let mut device = Device::new(&instance, &window);
+        let raytracing_properties = RaytracingProperties::new(&device, &instance);
 
         let ui = UserInterface::new(&window);
 
-        let clear = Clear::new(&device);
-        let model_renderer = ModelRenderer::new(&device);
         let egui_renderer = EguiRenderer::new(&mut device, &ui);
-        let render_queue: Vec<Box<dyn Renderer>> = vec![
-            Box::new(clear),
-            Box::new(model_renderer),
-            Box::new(egui_renderer),
-        ];
+        let raytracer = Raytracer::new(&mut device, raytracing_properties);
+        let render_queue: Vec<Box<dyn Renderer>> =
+            vec![Box::new(raytracer), Box::new(egui_renderer)];
 
         let app = App {
             window,
@@ -117,37 +120,9 @@ impl App {
 
         command_buffer.begin(&self.device, vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
 
-        let swapchain_image = self.device.swapchain_image(acquired_frame.image_index);
-
-        command_buffer.image_memory_barrier(
-            &self.device,
-            swapchain_image,
-            SubresourceRange::with_aspect(vk::ImageAspectFlags::COLOR),
-            vk::PipelineStageFlags2::NONE,
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::NONE,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        );
-
         self.render_queue.iter().for_each(|renderer| {
             renderer.fill_command_buffer(&self.device, command_buffer, acquired_frame.image_index)
         });
-
-        command_buffer.end_rendering(&self.device);
-
-        command_buffer.image_memory_barrier(
-            &self.device,
-            swapchain_image,
-            SubresourceRange::with_aspect(vk::ImageAspectFlags::COLOR),
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::AccessFlags2::COLOR_ATTACHMENT_READ | vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            vk::ImageLayout::PRESENT_SRC_KHR,
-        );
 
         command_buffer.end(&self.device);
 

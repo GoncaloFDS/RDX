@@ -1,7 +1,6 @@
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::command_pool::CommandPool;
 use crate::vulkan::frame::Frame;
-use crate::vulkan::image_view::ImageView;
 use crate::vulkan::instance::Instance;
 use crate::vulkan::semaphore::Semaphore;
 use crate::vulkan::swapchain::Swapchain;
@@ -18,7 +17,7 @@ pub struct Device {
     queue_index: u32,
     allocator: GpuAllocator<vk::DeviceMemory>,
     swapchain: Swapchain,
-    swapchain_image_views: Vec<ImageView>,
+    swapchain_image_views: Vec<vk::ImageView>,
     command_pool: CommandPool,
     frames: Vec<Frame>,
 }
@@ -36,13 +35,26 @@ impl Device {
             .dynamic_rendering(true)
             .synchronization2(true);
 
+        let mut acceleration_structure_features =
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHRBuilder::new()
+                .acceleration_structure(true);
+        let mut ray_tracing_features =
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHRBuilder::new()
+                .ray_tracing_pipeline(true);
+
         let features = vk::PhysicalDeviceFeatures2Builder::new()
             .extend_from(&mut vk1_2features)
-            .extend_from(&mut vk1_3features);
+            .extend_from(&mut vk1_3features)
+            .extend_from(&mut acceleration_structure_features)
+            .extend_from(&mut ray_tracing_features);
 
         let device_builder = DeviceBuilder::new()
             .require_version(1, 3)
             .require_extension(vk::KHR_SWAPCHAIN_EXTENSION_NAME)
+            .require_extension(vk::KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME)
+            .require_extension(vk::KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME)
+            .require_extension(vk::KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME)
+            .require_extension(vk::KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME)
             .queue_family(graphics_present)
             .for_surface(instance.surface().handle())
             .require_features(&features);
@@ -102,8 +114,10 @@ impl Device {
             frame.destroy(self);
         }
 
-        for swapchain_image_views in &self.swapchain_image_views {
-            swapchain_image_views.destroy(self);
+        for swapchain_image_view in &self.swapchain_image_views {
+            unsafe {
+                self.handle.destroy_image_view(*swapchain_image_view, None);
+            }
         }
         self.command_pool.free_command_buffers(
             &self,
@@ -148,7 +162,7 @@ impl Device {
         self.swapchain.images()[current_image]
     }
 
-    pub fn swapchain_image_view(&self, current_image: usize) -> &ImageView {
+    pub fn swapchain_image_view(&self, current_image: usize) -> &vk::ImageView {
         &self.swapchain_image_views[current_image]
     }
 
@@ -174,7 +188,9 @@ impl Device {
 
     pub fn recreate_swapchain(&mut self) {
         for image_view in &self.swapchain_image_views {
-            image_view.destroy(&self)
+            unsafe {
+                self.handle.destroy_image_view(*image_view, None);
+            }
         }
 
         let format = self.swapchain.format();
@@ -183,12 +199,24 @@ impl Device {
             .images()
             .iter()
             .map(|&swapchain_image| {
-                ImageView::new(
-                    &self,
-                    swapchain_image,
-                    format.format,
-                    vk::ImageAspectFlags::COLOR,
-                )
+                let create_info = vk::ImageViewCreateInfoBuilder::new()
+                    .image(swapchain_image)
+                    .view_type(vk::ImageViewType::_2D)
+                    .format(format.format)
+                    .components(vk::ComponentMapping {
+                        r: vk::ComponentSwizzle::IDENTITY,
+                        g: vk::ComponentSwizzle::IDENTITY,
+                        b: vk::ComponentSwizzle::IDENTITY,
+                        a: vk::ComponentSwizzle::IDENTITY,
+                    })
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    });
+                unsafe { self.handle.create_image_view(&create_info, None).unwrap() }
             })
             .collect()
     }

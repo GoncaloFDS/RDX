@@ -2,8 +2,8 @@ use crate::renderers::Renderer;
 use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
+use crate::vulkan::graphics_pipeline::GraphicsPipeline;
 use crate::vulkan::pipeline_layout::PipelineLayout;
-use crate::vulkan::pipelines::graphics_pipeline::GraphicsPipeline;
 use crate::vulkan::shader_module::{Shader, ShaderModule};
 use erupt::{vk, ExtendableFrom};
 use std::slice;
@@ -85,6 +85,7 @@ impl Renderer for ModelRenderer {
         command_buffer: &CommandBuffer,
         _current_image: usize,
     ) {
+        puffin::profile_function!();
         command_buffer.bind_pipeline(
             device,
             vk::PipelineBindPoint::GRAPHICS,
@@ -97,7 +98,7 @@ impl Renderer for ModelRenderer {
     fn update(&mut self, _device: &mut Device, _ui: &mut UserInterface) {}
 
     fn destroy(&mut self, device: &mut Device) {
-        self.pipeline_layout.destroy(&device);
-        self.pipeline.destroy(&device);
+        self.pipeline_layout.destroy(device);
+        self.pipeline.destroy(device);
     }
 }

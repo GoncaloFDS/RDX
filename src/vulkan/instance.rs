@@ -24,7 +24,7 @@ impl Instance {
         let (instance, debug_messenger, instance_metadata) =
             unsafe { instance_builder.build(&entry).unwrap() };
 
-        let surface = Surface::new(&instance, &window);
+        let surface = Surface::new(&instance, window);
 
         Instance {
             handle: instance,

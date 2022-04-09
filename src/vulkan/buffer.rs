@@ -73,6 +73,11 @@ impl Buffer {
         let memory = self.device_memory.as_mut().unwrap();
         memory.write_data(device, data, offset * size_of::<T>() as u64)
     }
+
+    pub fn get_device_address(&self, device: &Device) -> vk::DeviceAddress {
+        let info = vk::BufferDeviceAddressInfoBuilder::new().buffer(self.handle);
+        unsafe { device.handle().get_buffer_device_address(&info) }
+    }
 }
 
 fn get_memory_requiremets(device: &Device, buffer: vk::Buffer) -> vk::MemoryRequirements2 {

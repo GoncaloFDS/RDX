@@ -1,13 +1,11 @@
 use crate::vulkan::command_pool::CommandPool;
 use crate::vulkan::device::Device;
 use crate::vulkan::image::Image;
-use crate::vulkan::image_view::ImageView;
 use crate::vulkan::instance::Instance;
 use erupt::vk;
 
 pub struct DepthBuffer {
-    _image: Image,
-    image_view: ImageView,
+    image: Image,
     format: vk::Format,
 }
 
@@ -23,28 +21,18 @@ impl DepthBuffer {
             device,
             extent,
             format,
-            Some(vk::ImageTiling::OPTIMAL),
-            Some(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT),
-        );
-        image.allocate_memory(device);
-        let image_view =
-            ImageView::new(device, image.handle(), format, vk::ImageAspectFlags::DEPTH);
-
-        image.transition_image_layout(
-            &device,
-            command_buffers,
-            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            vk::ImageAspectFlags::DEPTH,
         );
 
-        DepthBuffer {
-            _image: image,
-            image_view,
-            format,
-        }
+        image.transition_image_layout(device, vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+        DepthBuffer { image, format }
     }
 
-    pub fn image_view(&self) -> &ImageView {
-        &self.image_view
+    pub fn image_view(&self) -> vk::ImageView {
+        self.image.view()
     }
 
     pub fn get_format(&self) -> vk::Format {

@@ -26,8 +26,9 @@ impl Renderer for Clear {
         command_buffer: &CommandBuffer,
         current_image: usize,
     ) {
+        puffin::profile_function!();
         let color_attachment = vk::RenderingAttachmentInfoBuilder::new()
-            .image_view(device.swapchain_image_view(current_image).handle())
+            .image_view(*device.swapchain_image_view(current_image))
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .clear_value(vk::ClearValue {
                 color: vk::ClearColorValue {

@@ -1,14 +1,12 @@
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::image::Image;
-use crate::vulkan::image_view::ImageView;
 use crate::vulkan::sampler::{Sampler, SamplerInfo};
 use crate::vulkan::texture::Texture;
 use erupt::vk;
 
 pub struct TextureImage {
     image: Image,
-    image_view: ImageView,
     sampler: Sampler,
 }
 
@@ -24,39 +22,24 @@ impl TextureImage {
                 height: texture.height(),
             },
             vk::Format::R8G8B8A8_UNORM,
-            None,
-            None,
-        );
-        image.allocate_memory(device);
-
-        let image_view = ImageView::new(
-            device,
-            image.handle(),
-            image.format(),
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
             vk::ImageAspectFlags::COLOR,
         );
+
         let sampler = Sampler::new(device, &SamplerInfo::default());
 
         let command_pool = device.command_pool();
-        image.transition_image_layout(device, command_pool, vk::ImageLayout::TRANSFER_DST_OPTIMAL);
-        image.copy_from(device, command_pool, &staging_buffer);
-        image.transition_image_layout(
-            device,
-            command_pool,
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        );
+        image.transition_image_layout(device, vk::ImageLayout::TRANSFER_DST_OPTIMAL);
+        image.copy_from(device, &staging_buffer);
+        image.transition_image_layout(device, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
 
         staging_buffer.destroy(device);
-        TextureImage {
-            image,
-            image_view,
-            sampler,
-        }
+        TextureImage { image, sampler }
     }
 
     pub fn destroy(&mut self, device: &mut Device) {
         self.sampler.destroy(device);
-        self.image_view.destroy(device);
         self.image.destroy(device);
     }
 }
@@ -66,8 +49,8 @@ impl TextureImage {
         &self.image
     }
 
-    pub fn image_view(&self) -> &ImageView {
-        &self.image_view
+    pub fn image_view(&self) -> vk::ImageView {
+        self.image.view()
     }
 
     pub fn sampler(&self) -> &Sampler {

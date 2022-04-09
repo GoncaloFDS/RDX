@@ -5,8 +5,8 @@ use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::descriptor_binding::DescriptorBinding;
 use crate::vulkan::descriptor_set_manager::DescriptorSetManager;
 use crate::vulkan::device::Device;
+use crate::vulkan::graphics_pipeline::GraphicsPipeline;
 use crate::vulkan::pipeline_layout::PipelineLayout;
-use crate::vulkan::pipelines::graphics_pipeline::GraphicsPipeline;
 use crate::vulkan::push_constants::PushConstantRanges;
 use crate::vulkan::shader_module::{Shader, ShaderModule};
 use crate::vulkan::texture::Texture;
@@ -224,8 +224,7 @@ impl EguiRenderer {
 
     fn update_textures(&mut self, device: &mut Device, ui: &UserInterface) {
         let textures_delta = ui.textures_delta();
-        for texture_id in &textures_delta.free {
-            // free texture
+        for _texture_id in &textures_delta.free {
             todo!()
         }
 
@@ -256,7 +255,7 @@ impl EguiRenderer {
             (0..3).enumerate().for_each(|(i, _)| {
                 let image_info = [vk::DescriptorImageInfoBuilder::new()
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image_view(texture_image.image_view().handle())
+                    .image_view(texture_image.image_view())
                     .sampler(texture_image.sampler().handle())];
                 let descriptor_writes =
                     [self
@@ -279,6 +278,41 @@ impl Renderer for EguiRenderer {
         command_buffer: &CommandBuffer,
         current_image: usize,
     ) {
+        puffin::profile_function!();
+        // clear
+        let render_area = vk::Rect2D {
+            offset: Default::default(),
+            extent: device.swapchain().extent(),
+        };
+        let color_attachment = vk::RenderingAttachmentInfoBuilder::new()
+            .image_view(*device.swapchain_image_view(current_image))
+            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .clear_value(vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.4, 0.3, 0.2, 1.0],
+                },
+            })
+            .load_op(vk::AttachmentLoadOp::LOAD)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .resolve_image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL);
+
+        let rendering_info = vk::RenderingInfoBuilder::new()
+            .color_attachments(slice::from_ref(&color_attachment))
+            .layer_count(1)
+            .render_area(render_area);
+
+        command_buffer.set_scissor(device, 0, &[render_area.into_builder()]);
+
+        let extent = render_area.extent;
+        let viewports = vk::ViewportBuilder::new()
+            .height(extent.height as f32)
+            .width(extent.width as f32)
+            .max_depth(1.0);
+        command_buffer.set_viewport(device, 0, &[viewports]);
+
+        command_buffer.begin_rendering(device, &rendering_info);
+        // end clear
+
         command_buffer.bind_pipeline(
             device,
             vk::PipelineBindPoint::GRAPHICS,
@@ -314,9 +348,12 @@ impl Renderer for EguiRenderer {
             command_buffer.bind_index_buffer(device, &self.index_buffer, draw_indexed.index_offset);
             command_buffer.draw_indexed(device, draw_indexed.index_count);
         }
+
+        command_buffer.end_rendering(device);
     }
 
     fn update(&mut self, device: &mut Device, ui: &mut UserInterface) {
+        puffin::profile_function!();
         self.update_buffers(device, ui);
         self.update_textures(device, ui);
     }
