@@ -51,7 +51,7 @@ pub struct EguiRenderer {
 }
 
 impl EguiRenderer {
-    pub fn new(device: &mut Device, _ui: &UserInterface) -> Self {
+    pub fn new(device: &mut Device) -> Self {
         let binding_descriptions = EguiVertex::binding_descriptions();
         let attribute_descriptions = EguiVertex::attribute_descriptions();
         let vertex_input_state = vk::PipelineVertexInputStateCreateInfoBuilder::new()

@@ -2,7 +2,9 @@ use crate::app::App;
 
 mod app;
 mod camera;
+mod input;
 mod renderers;
+mod time;
 mod user_interface;
 mod vulkan;
 

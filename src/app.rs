@@ -1,15 +1,17 @@
 use crate::camera::Camera;
+use crate::input::Input;
 use crate::renderers::egui_renderer::EguiRenderer;
 use crate::renderers::raytracer::Raytracer;
 use crate::renderers::Renderer;
+use crate::time::Time;
 use crate::user_interface::UserInterface;
 use crate::vulkan::device::Device;
 use crate::vulkan::instance::Instance;
 use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
 use erupt::vk;
 use glam::vec3;
-use winit::dpi::PhysicalSize;
-use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
+use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::event::{ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
@@ -20,6 +22,8 @@ pub struct App {
     render_queue: Vec<Box<dyn Renderer>>,
     ui: UserInterface,
     camera: Camera,
+    input: Input,
+    time: Time,
 }
 
 impl App {
@@ -39,12 +43,10 @@ impl App {
 
         let ui = UserInterface::new(&window);
 
-        let egui_renderer = EguiRenderer::new(&mut device, &ui);
+        let egui_renderer = EguiRenderer::new(&mut device);
         let raytracer = Raytracer::new(&mut device, raytracing_properties);
         let render_queue: Vec<Box<dyn Renderer>> =
             vec![Box::new(raytracer), Box::new(egui_renderer)];
-
-        let camera = Camera::new(vec3(0.0, 0.0, -1.0), vec3(0.0, 0.0, 0.0));
 
         let app = App {
             window,
@@ -52,7 +54,9 @@ impl App {
             instance,
             render_queue,
             ui,
-            camera,
+            camera: Camera::new(vec3(0.0, 0.0, -1.0), vec3(0.0, 0.0, 0.0)),
+            input: Input::default(),
+            time: Time::new(),
         };
 
         (app, event_loop)
@@ -61,49 +65,50 @@ impl App {
     pub fn on_event(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
         *control_flow = ControlFlow::Poll;
         match event {
-            Event::WindowEvent { event, .. } => {
-                let ui_captured_input = self.ui.on_event(&event);
+            Event::MainEventsCleared => {
+                self.run();
+            }
+            Event::WindowEvent {
+                event: window_event,
+                ..
+            } => {
+                let ui_captured_input = self.ui.on_event(&window_event);
                 if ui_captured_input {
                     return;
                 }
 
-                match event {
-                    WindowEvent::CloseRequested => {
-                        log::info!("Closing Window");
-                        *control_flow = ControlFlow::Exit
-                    }
-                    WindowEvent::Resized(size) => self.resize(vk::Extent2D {
-                        width: size.width,
-                        height: size.height,
-                    }),
+                match window_event {
+                    WindowEvent::CloseRequested => self.close_window(control_flow),
+                    WindowEvent::Resized(size) => self.resize(size),
                     WindowEvent::KeyboardInput { input, .. } => {
-                        if input.virtual_keycode == Some(VirtualKeyCode::Escape) {
-                            *control_flow = ControlFlow::Exit;
-                        } else if input.virtual_keycode == Some(VirtualKeyCode::F1)
-                            && input.state == ElementState::Pressed
-                        {
-                            self.ui.toggle_settings()
-                        } else if input.virtual_keycode == Some(VirtualKeyCode::F2)
-                            && input.state == ElementState::Pressed
-                        {
-                            self.ui.toggle_profiler()
-                        }
+                        self.keyboard_input(control_flow, input)
+                    }
+                    WindowEvent::MouseInput { button, state, .. } => {
+                        self.mouse_input(button, state);
+                    }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        self.cursor_moved(position);
                     }
                     _ => {}
                 }
-            }
-            Event::MainEventsCleared => {
-                self.run();
             }
             _ => (),
         }
     }
 
-    pub fn resize(&mut self, size: vk::Extent2D) {
-        self.device.resize_swapchain(size);
+    fn close_window(&mut self, control_flow: &mut ControlFlow) {
+        log::info!("Closing Window");
+        *control_flow = ControlFlow::Exit
     }
 
-    pub fn run(&mut self) {
+    pub fn resize(&mut self, size: PhysicalSize<u32>) {
+        self.device.resize_swapchain(vk::Extent2D {
+            width: size.width,
+            height: size.height,
+        });
+    }
+
+    fn run(&mut self) {
         puffin::GlobalProfiler::lock().new_frame();
         puffin::profile_function!();
         let acquired_frame = self
@@ -114,7 +119,7 @@ impl App {
             self.recreate_swapchain();
         }
 
-        self.camera.update_camera(0.1);
+        self.camera.update_camera(self.time.delta_time());
         self.ui.update(&self.window);
         self.render_queue.iter_mut().for_each(|renderer| {
             renderer.update(
@@ -149,10 +154,41 @@ impl App {
 
         self.device
             .queue_present(self.device.queue(), semaphore, acquired_frame.image_index);
+
+        self.time.tick();
     }
 
     fn recreate_swapchain(&mut self) {
         self.device.recreate_swapchain();
+    }
+
+    fn keyboard_input(&mut self, control_flow: &mut ControlFlow, input: KeyboardInput) {
+        if input.virtual_keycode == Some(VirtualKeyCode::Escape) {
+            *control_flow = ControlFlow::Exit;
+        } else if input.virtual_keycode == Some(VirtualKeyCode::F1)
+            && input.state == ElementState::Pressed
+        {
+            self.ui.toggle_settings()
+        } else if input.virtual_keycode == Some(VirtualKeyCode::F2)
+            && input.state == ElementState::Pressed
+        {
+            self.ui.toggle_profiler()
+        } else {
+            self.camera.handle_input(input);
+        }
+    }
+
+    fn mouse_input(&mut self, input: MouseButton, state: ElementState) {
+        self.camera.handle_mouse_input(input, state);
+    }
+
+    fn cursor_moved(&mut self, position: PhysicalPosition<f64>) {
+        self.input.update(position);
+        self.camera.handle_mouse_move(
+            self.input.delta_x(),
+            self.input.delta_y(),
+            self.time.delta_time(),
+        )
     }
 }
 
