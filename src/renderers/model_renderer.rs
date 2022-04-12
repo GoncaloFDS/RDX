@@ -1,3 +1,4 @@
+use crate::camera::Camera;
 use crate::renderers::Renderer;
 use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
@@ -95,7 +96,14 @@ impl Renderer for ModelRenderer {
         command_buffer.draw(device, 3, 1, 0, 0);
     }
 
-    fn update(&mut self, _device: &mut Device, _ui: &mut UserInterface) {}
+    fn update(
+        &mut self,
+        device: &mut Device,
+        current_image: usize,
+        camera: &Camera,
+        ui: &mut UserInterface,
+    ) {
+    }
 
     fn destroy(&mut self, device: &mut Device) {
         self.pipeline_layout.destroy(device);

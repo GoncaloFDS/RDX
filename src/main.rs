@@ -1,6 +1,7 @@
 use crate::app::App;
 
 mod app;
+mod camera;
 mod renderers;
 mod user_interface;
 mod vulkan;

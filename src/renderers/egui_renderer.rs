@@ -1,3 +1,4 @@
+use crate::camera::Camera;
 use crate::renderers::Renderer;
 use crate::user_interface::UserInterface;
 use crate::vulkan::buffer::Buffer;
@@ -257,10 +258,7 @@ impl EguiRenderer {
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                     .image_view(texture_image.image_view())
                     .sampler(texture_image.sampler().handle())];
-                let descriptor_writes =
-                    [self
-                        .descriptor_set_manager
-                        .bind_image(i as _, 0, &image_info)];
+                let descriptor_writes = [self.descriptor_set_manager.bind_image(i, 0, &image_info)];
 
                 self.descriptor_set_manager
                     .update_descriptors(device, &descriptor_writes);
@@ -352,7 +350,13 @@ impl Renderer for EguiRenderer {
         command_buffer.end_rendering(device);
     }
 
-    fn update(&mut self, device: &mut Device, ui: &mut UserInterface) {
+    fn update(
+        &mut self,
+        device: &mut Device,
+        current_image: usize,
+        camera: &Camera,
+        ui: &mut UserInterface,
+    ) {
         puffin::profile_function!();
         self.update_buffers(device, ui);
         self.update_textures(device, ui);

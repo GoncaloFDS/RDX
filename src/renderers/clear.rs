@@ -1,3 +1,4 @@
+use crate::camera::Camera;
 use crate::renderers::Renderer;
 use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
@@ -56,7 +57,13 @@ impl Renderer for Clear {
         command_buffer.begin_rendering(device, &rendering_info);
     }
 
-    fn update(&mut self, device: &mut Device, _ui: &mut UserInterface) {
+    fn update(
+        &mut self,
+        device: &mut Device,
+        current_image: usize,
+        camera: &Camera,
+        ui: &mut UserInterface,
+    ) {
         self.render_area = vk::Rect2D {
             offset: Default::default(),
             extent: device.swapchain().extent(),

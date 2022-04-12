@@ -1,3 +1,4 @@
+use crate::camera::Camera;
 use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
@@ -16,7 +17,13 @@ pub trait Renderer: Downcast {
         current_image: usize,
     );
 
-    fn update(&mut self, device: &mut Device, ui: &mut UserInterface);
+    fn update(
+        &mut self,
+        device: &mut Device,
+        current_image: usize,
+        camera: &Camera,
+        ui: &mut UserInterface,
+    );
 
     fn destroy(&mut self, device: &mut Device);
 }

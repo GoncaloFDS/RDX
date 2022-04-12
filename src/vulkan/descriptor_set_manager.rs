@@ -81,12 +81,12 @@ impl DescriptorSetManager {
 
     pub fn bind_buffer<'a>(
         &self,
-        index: u32,
+        index: usize,
         binding: u32,
         buffer_info: &'a [vk::DescriptorBufferInfoBuilder<'a>],
     ) -> vk::WriteDescriptorSetBuilder<'a> {
         vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.descriptor_sets[index as usize])
+            .dst_set(self.descriptor_sets[index])
             .dst_binding(binding)
             .dst_array_element(0)
             .descriptor_type(*self.binding_types.get(&binding).unwrap())
@@ -95,12 +95,12 @@ impl DescriptorSetManager {
 
     pub fn bind_image<'a>(
         &self,
-        index: u32,
+        index: usize,
         binding: u32,
         image_info: &'a [vk::DescriptorImageInfoBuilder<'a>],
     ) -> vk::WriteDescriptorSetBuilder<'a> {
         vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.descriptor_sets[index as usize])
+            .dst_set(self.descriptor_sets[index])
             .dst_binding(binding)
             .dst_array_element(0)
             .descriptor_type(*self.binding_types.get(&binding).unwrap())
@@ -109,12 +109,12 @@ impl DescriptorSetManager {
 
     pub fn bind_acceleration_structure<'a>(
         &self,
-        index: u32,
+        index: usize,
         binding: u32,
         acceleration_structures: &'a mut vk::WriteDescriptorSetAccelerationStructureKHRBuilder<'a>,
     ) -> vk::WriteDescriptorSetBuilder<'a> {
         let mut write = vk::WriteDescriptorSetBuilder::new()
-            .dst_set(self.descriptor_sets[index as usize])
+            .dst_set(self.descriptor_sets[index])
             .dst_binding(binding)
             .dst_array_element(0)
             .descriptor_type(*self.binding_types.get(&binding).unwrap())

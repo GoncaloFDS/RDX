@@ -10,12 +10,7 @@ pub struct DepthBuffer {
 }
 
 impl DepthBuffer {
-    pub fn new(
-        device: &mut Device,
-        instance: &Instance,
-        command_buffers: &CommandPool,
-        extent: vk::Extent2D,
-    ) -> Self {
+    pub fn new(device: &mut Device, instance: &Instance, extent: vk::Extent2D) -> Self {
         let format = find_depth_format(device, instance);
         let mut image = Image::new(
             device,

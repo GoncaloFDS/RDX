@@ -1,3 +1,4 @@
+use crate::camera::Camera;
 use crate::renderers::Renderer;
 use crate::user_interface::UserInterface;
 use crate::vulkan::buffer::Buffer;
@@ -16,16 +17,18 @@ use crate::vulkan::raytracing::bottom_level_geometry::BottomLevelGeometry;
 use crate::vulkan::raytracing::raytracing_pipeline::RaytracingPipeline;
 use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
 use crate::vulkan::raytracing::shader_binding_table::{Entry, ShaderBindingTable};
-use crate::vulkan::raytracing::top_level_acceleration_structure::TopLevelAccelerationStructure;
+use crate::vulkan::raytracing::top_level_acceleration_structure::{
+    AccelerationInstance, TopLevelAccelerationStructure,
+};
 use crate::vulkan::sampler::{Sampler, SamplerInfo};
 use crate::vulkan::shader_module::{Shader, ShaderModule};
 use crate::vulkan::subresource_range::SubresourceRange;
 use crate::vulkan::texture_image::TextureImage;
-use crate::vulkan::uniform_buffer::UniformBuffer;
+use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::ModelVertex;
 use crevice::std430::AsStd430;
 use erupt::vk;
-use glam::{vec2, vec3};
+use glam::{vec2, vec3, Mat4};
 use std::mem::size_of;
 
 const VERTICES_PER_QUAD: u64 = 4;
@@ -39,9 +42,6 @@ pub struct Raytracer {
     pipeline: RaytracingPipeline,
     pipeline_layout: PipelineLayout,
     descriptor_set_manager: DescriptorSetManager,
-    raygen_index: u32,
-    miss_index: u32,
-    triangle_hit_group_index: u32,
     top_structures: Vec<TopLevelAccelerationStructure>,
     bottom_structures: Vec<BottomLevelAccelerationStructure>,
     accumulation_image: Image,
@@ -59,10 +59,12 @@ pub struct Raytracer {
     uniform_buffers: Vec<UniformBuffer>,
     material_buffer: Buffer,
     // sampler: Sampler,
+    first: bool,
 }
 
 impl Raytracer {
     pub fn new(device: &mut Device, raytracing_properties: RaytracingProperties) -> Self {
+        let first = true;
         let descriptor_bindings = [
             // TAS
             DescriptorBinding::new(
@@ -216,14 +218,14 @@ impl Raytracer {
 
         let top_structures_buffer = Buffer::empty(
             device,
-            tlas_memory_requirements.acceleration_structure_size,
+            VERTEX_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
             gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
 
         let top_structures_scratch_buffer = Buffer::empty(
             device,
-            tlas_memory_requirements.build_scratch_size,
+            VERTEX_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
@@ -233,14 +235,14 @@ impl Raytracer {
         // blas
         let blas_buffer = Buffer::empty(
             device,
-            2048,
+            VERTEX_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
             gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
 
         let blas_scratch_buffer = Buffer::empty(
             device,
-            2048,
+            VERTEX_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
@@ -311,9 +313,6 @@ impl Raytracer {
             pipeline,
             pipeline_layout,
             descriptor_set_manager,
-            raygen_index,
-            miss_index,
-            triangle_hit_group_index,
             top_structures,
             bottom_structures: vec![],
             accumulation_image,
@@ -331,86 +330,96 @@ impl Raytracer {
             uniform_buffers,
             material_buffer,
             // sampler,
+            first,
         }
     }
 
-    fn update_descriptors(&mut self, device: &mut Device) {
-        (0..3).enumerate().for_each(|(i, _)| {
-            let top_structures_handle = [self.top_structures[0].handle()];
-            let mut top_structures_info =
-                vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
-                    .acceleration_structures(&top_structures_handle);
+    fn update_descriptors(&mut self, device: &mut Device, current_image: usize, camera: &Camera) {
+        let extent = device.swapchain().extent();
+        let aspect_ratio = extent.width as f32 / extent.height as f32;
+        let view_model = camera.view();
+        let projection = camera.projection(aspect_ratio);
+        let ubo = UniformBufferObject {
+            view_model,
+            projection,
+            view_model_inverse: view_model.inverse(),
+            projection_inverse: projection.inverse(),
+        };
+        self.uniform_buffers[current_image].update_gpu_buffer(device, &ubo);
 
-            let accumulation_image_info = [vk::DescriptorImageInfoBuilder::new()
-                .image_view(self.accumulation_image.view())
-                .image_layout(vk::ImageLayout::GENERAL)];
+        let top_structures_handle = [self.top_structures[0].handle()];
+        let mut top_structures_info = vk::WriteDescriptorSetAccelerationStructureKHRBuilder::new()
+            .acceleration_structures(&top_structures_handle);
 
-            let output_image_info = [vk::DescriptorImageInfoBuilder::new()
-                .image_view(self.output_image.view())
-                .image_layout(vk::ImageLayout::GENERAL)];
+        let accumulation_image_info = [vk::DescriptorImageInfoBuilder::new()
+            .image_view(self.accumulation_image.view())
+            .image_layout(vk::ImageLayout::GENERAL)];
 
-            let uniform_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-                .buffer(self.uniform_buffers[i].buffer().handle())
-                .range(vk::WHOLE_SIZE)];
+        let output_image_info = [vk::DescriptorImageInfoBuilder::new()
+            .image_view(self.output_image.view())
+            .image_layout(vk::ImageLayout::GENERAL)];
 
-            let vertex_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-                .buffer(self.vertex_buffer.handle())
-                .range(vk::WHOLE_SIZE)];
+        let uniform_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+            .buffer(self.uniform_buffers[current_image].buffer().handle())
+            .range(vk::WHOLE_SIZE)];
 
-            let index_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-                .buffer(self.index_buffer.handle())
-                .range(vk::WHOLE_SIZE)];
+        let vertex_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+            .buffer(self.vertex_buffer.handle())
+            .range(vk::WHOLE_SIZE)];
 
-            let offset_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-                .buffer(self.offset_buffer.handle())
-                .range(vk::WHOLE_SIZE)];
+        let index_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+            .buffer(self.index_buffer.handle())
+            .range(vk::WHOLE_SIZE)];
 
-            let material_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
-                .buffer(self.material_buffer.handle())
-                .range(vk::WHOLE_SIZE)];
+        let offset_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+            .buffer(self.offset_buffer.handle())
+            .range(vk::WHOLE_SIZE)];
 
-            // let image_infos: Vec<_> = self
-            //     .textures
-            //     .iter()
-            //     .map(|texture_image| {
-            //         vk::DescriptorImageInfoBuilder::new()
-            //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            //             .image_view(texture_image.image_view())
-            //     })
-            //     .collect();
+        let material_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+            .buffer(self.material_buffer.handle())
+            .range(vk::WHOLE_SIZE)];
 
-            // let sampler_info =
-            //     [vk::DescriptorImageInfoBuilder::new().sampler(self.sampler.handle())];
+        // let image_infos: Vec<_> = self
+        //     .textures
+        //     .iter()
+        //     .map(|texture_image| {
+        //         vk::DescriptorImageInfoBuilder::new()
+        //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+        //             .image_view(texture_image.image_view())
+        //     })
+        //     .collect();
 
-            let descriptor_writes = [
-                self.descriptor_set_manager.bind_acceleration_structure(
-                    i as u32,
-                    0,
-                    &mut top_structures_info,
-                ),
-                self.descriptor_set_manager
-                    .bind_image(i as u32, 1, &accumulation_image_info),
-                self.descriptor_set_manager
-                    .bind_image(i as u32, 2, &output_image_info),
-                self.descriptor_set_manager
-                    .bind_buffer(i as u32, 3, &uniform_buffer_info),
-                self.descriptor_set_manager
-                    .bind_buffer(i as u32, 4, &vertex_buffer_info),
-                self.descriptor_set_manager
-                    .bind_buffer(i as u32, 5, &index_buffer_info),
-                self.descriptor_set_manager
-                    .bind_buffer(i as u32, 6, &material_buffer_info),
-                self.descriptor_set_manager
-                    .bind_buffer(i as u32, 7, &offset_buffer_info),
-                // self.descriptor_set_manager
-                //     .bind_image(i as u32, 8, &image_infos),
-                // self.descriptor_set_manager
-                //     .bind_image(i as u32, 9, &sampler_info),
-            ];
+        // let sampler_info =
+        //     [vk::DescriptorImageInfoBuilder::new().sampler(self.sampler.handle())];
 
+        let descriptor_writes = [
+            self.descriptor_set_manager.bind_acceleration_structure(
+                current_image,
+                0,
+                &mut top_structures_info,
+            ),
             self.descriptor_set_manager
-                .update_descriptors(device, &descriptor_writes);
-        });
+                .bind_image(current_image, 1, &accumulation_image_info),
+            self.descriptor_set_manager
+                .bind_image(current_image, 2, &output_image_info),
+            self.descriptor_set_manager
+                .bind_buffer(current_image, 3, &uniform_buffer_info),
+            self.descriptor_set_manager
+                .bind_buffer(current_image, 4, &vertex_buffer_info),
+            self.descriptor_set_manager
+                .bind_buffer(current_image, 5, &index_buffer_info),
+            self.descriptor_set_manager
+                .bind_buffer(current_image, 6, &material_buffer_info),
+            self.descriptor_set_manager
+                .bind_buffer(current_image, 7, &offset_buffer_info),
+            // self.descriptor_set_manager
+            //     .bind_image(current_image, 8, &image_infos),
+            // self.descriptor_set_manager
+            //     .bind_image(current_image, 9, &sampler_info),
+        ];
+
+        self.descriptor_set_manager
+            .update_descriptors(device, &descriptor_writes);
     }
 }
 
@@ -537,75 +546,99 @@ impl Renderer for Raytracer {
         );
     }
 
-    fn update(&mut self, device: &mut Device, ui: &mut UserInterface) {
+    fn update(
+        &mut self,
+        device: &mut Device,
+        current_image: usize,
+        camera: &Camera,
+        ui: &mut UserInterface,
+    ) {
         puffin::profile_function!();
-        let vertices = vec![
-            ModelVertex::new(vec3(0.0, -0.5, 0.0), vec2(0.0, 0.0)).as_std430(),
-            ModelVertex::new(vec3(0.5, 0.5, 0.0), vec2(0.0, 0.0)).as_std430(),
-            ModelVertex::new(vec3(-0.5, 0.5, 0.0), vec2(0.0, 0.0)).as_std430(),
-        ];
-        let indices = vec![0, 1, 2];
-        let offsets = vec![(0u32, 0)];
 
-        //
-        self.vertex_buffer.write_data(device, &vertices, 0);
-        self.index_buffer.write_data(device, &indices, 0);
+        if self.first {
+            self.first = false;
+            let vertices = vec![
+                ModelVertex::new(vec3(-0.5, -0.5, 0.0), vec2(0.0, 0.0)).as_std430(),
+                ModelVertex::new(vec3(0.5, -0.5, 0.0), vec2(0.0, 0.0)).as_std430(),
+                ModelVertex::new(vec3(0.0, 0.5, 0.0), vec2(0.0, 0.0)).as_std430(),
+            ];
+            let indices = vec![0, 1, 2];
+            let offsets = vec![(0u32, 0)];
 
-        //
-        let mut geometries = BottomLevelGeometry::default();
-        geometries.add_geometry_triangles(
-            device,
-            &self.vertex_buffer,
-            &self.index_buffer,
-            0,
-            3,
-            3,
-            0,
-            true,
-        );
+            //
+            self.vertex_buffer.write_data(device, &vertices, 0);
+            self.index_buffer.write_data(device, &indices, 0);
 
-        self.bottom_structures = vec![BottomLevelAccelerationStructure::new(
-            device,
-            self.raytracing_properties,
-            geometries,
-        )];
+            //
+            let mut geometries = BottomLevelGeometry::default();
+            geometries.add_geometry_triangles(
+                device,
+                &self.vertex_buffer,
+                &self.index_buffer,
+                0,
+                3,
+                0,
+                3,
+                true,
+            );
 
-        CommandPool::single_time_submit(device, |command_buffer| {
-            // blas
-            let mut result_offset = 0;
-            let mut scratch_offset = 0;
-            for blas in &mut self.bottom_structures {
-                blas.generate(
-                    device,
-                    &command_buffer,
-                    &self.blas_scratch_buffer,
-                    scratch_offset,
-                    &self.blas_buffer,
-                    result_offset,
-                );
-                result_offset += blas.build_sizes().acceleration_structure_size;
-                scratch_offset += blas.build_sizes().build_scratch_size;
-            }
+            self.bottom_structures = vec![BottomLevelAccelerationStructure::new(
+                device,
+                self.raytracing_properties,
+                geometries,
+            )];
 
-            // tlas
-            let mut result_offset = 0;
-            let mut scratch_offset = 0;
-            for tlas in &mut self.top_structures {
-                tlas.generate(
-                    device,
-                    &command_buffer,
-                    &self.top_structures_scratch_buffer,
-                    scratch_offset,
-                    &self.top_structures_buffer,
-                    result_offset,
-                    None,
-                );
-                result_offset += tlas.build_sizes().acceleration_structure_size;
-                scratch_offset += tlas.build_sizes().build_scratch_size;
-            }
-        });
+            CommandPool::single_time_submit(device, |command_buffer| {
+                // blas
+                let mut result_offset = 0;
+                let mut scratch_offset = 0;
+                for blas in &mut self.bottom_structures {
+                    blas.generate(
+                        device,
+                        &command_buffer,
+                        &self.blas_scratch_buffer,
+                        scratch_offset,
+                        &self.blas_buffer,
+                        result_offset,
+                    );
+                    result_offset += blas.build_sizes().acceleration_structure_size;
+                    scratch_offset += blas.build_sizes().build_scratch_size;
+                }
 
-        self.update_descriptors(device);
+                command_buffer.acceleration_structure_memory_barrier(device);
+                // tlas
+                let mut result_offset = 0;
+                let mut scratch_offset = 0;
+                for tlas in &mut self.top_structures {
+                    tlas.generate(
+                        device,
+                        &command_buffer,
+                        &self.top_structures_scratch_buffer,
+                        scratch_offset,
+                        &self.top_structures_buffer,
+                        result_offset,
+                        None,
+                    );
+                    result_offset += tlas.build_sizes().acceleration_structure_size;
+                    scratch_offset += tlas.build_sizes().build_scratch_size;
+                }
+
+                // instances
+                let blas_address = &self
+                    .bottom_structures
+                    .iter()
+                    .map(|blas| blas.get_address(device))
+                    .collect::<Vec<_>>();
+                let instances = vec![AccelerationInstance::new(0, 0, 0, Mat4::IDENTITY)];
+                let instances = instances
+                    .iter()
+                    .map(|ins| ins.generate(blas_address[0]))
+                    .collect::<Vec<_>>();
+                self.instances_buffer.write_data(device, &instances, 0);
+            });
+        }
+
+        self.update_descriptors(device, current_image, camera);
     }
 
     fn destroy(&mut self, device: &mut Device) {

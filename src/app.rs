@@ -1,6 +1,5 @@
-use crate::renderers::clear::Clear;
+use crate::camera::Camera;
 use crate::renderers::egui_renderer::EguiRenderer;
-use crate::renderers::model_renderer::ModelRenderer;
 use crate::renderers::raytracer::Raytracer;
 use crate::renderers::Renderer;
 use crate::user_interface::UserInterface;
@@ -8,7 +7,8 @@ use crate::vulkan::device::Device;
 use crate::vulkan::instance::Instance;
 use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
 use erupt::vk;
-use winit::dpi::{PhysicalSize, Size};
+use glam::vec3;
+use winit::dpi::PhysicalSize;
 use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
@@ -19,6 +19,7 @@ pub struct App {
     instance: Instance,
     render_queue: Vec<Box<dyn Renderer>>,
     ui: UserInterface,
+    camera: Camera,
 }
 
 impl App {
@@ -43,12 +44,15 @@ impl App {
         let render_queue: Vec<Box<dyn Renderer>> =
             vec![Box::new(raytracer), Box::new(egui_renderer)];
 
+        let camera = Camera::new(vec3(0.0, 0.0, -1.0), vec3(0.0, 0.0, 0.0));
+
         let app = App {
             window,
             device,
             instance,
             render_queue,
             ui,
+            camera,
         };
 
         (app, event_loop)
@@ -89,7 +93,7 @@ impl App {
                 }
             }
             Event::MainEventsCleared => {
-                self.draw();
+                self.run();
             }
             _ => (),
         }
@@ -99,14 +103,9 @@ impl App {
         self.device.resize_swapchain(size);
     }
 
-    pub fn draw(&mut self) {
+    pub fn run(&mut self) {
         puffin::GlobalProfiler::lock().new_frame();
         puffin::profile_function!();
-        self.ui.update(&self.window);
-        self.render_queue
-            .iter_mut()
-            .for_each(|renderer| renderer.update(&mut self.device, &mut self.ui));
-
         let acquired_frame = self
             .device
             .acquire_swapchain_frame(&self.instance, u64::MAX);
@@ -114,6 +113,17 @@ impl App {
         if acquired_frame.invalidate_images {
             self.recreate_swapchain();
         }
+
+        self.camera.update_camera(0.1);
+        self.ui.update(&self.window);
+        self.render_queue.iter_mut().for_each(|renderer| {
+            renderer.update(
+                &mut self.device,
+                acquired_frame.image_index,
+                &self.camera,
+                &mut self.ui,
+            )
+        });
 
         let command_buffer = self.device.command_buffer(acquired_frame.frame_index);
         let semaphore = self.device.semaphore(acquired_frame.frame_index).handle();

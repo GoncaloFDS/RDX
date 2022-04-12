@@ -4,7 +4,6 @@ use crevice::std430::{AsStd430, Std430};
 use erupt::vk;
 use glam::Mat4;
 use std::mem::size_of;
-use std::rc::Rc;
 
 #[derive(AsStd430)]
 pub struct UniformBufferObject {
