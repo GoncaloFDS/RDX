@@ -1,9 +1,13 @@
 use crate::app::App;
 
 mod app;
+mod block;
 mod camera;
+mod chunk;
 mod input;
+mod model;
 mod renderers;
+mod scene;
 mod time;
 mod user_interface;
 mod vulkan;

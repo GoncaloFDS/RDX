@@ -1,5 +1,6 @@
 use crate::camera::Camera;
 use crate::renderers::Renderer;
+use crate::scene::Scene;
 use crate::user_interface::UserInterface;
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
@@ -13,6 +14,7 @@ use crate::vulkan::shader_module::{Shader, ShaderModule};
 use crate::vulkan::texture::Texture;
 use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::vertex::{EguiVertex, Vertex};
+use bevy_ecs::prelude::World;
 use bytemuck::{Pod, Zeroable};
 use egui::{ImageData, TextureId};
 use erupt::{vk, ExtendableFrom};
@@ -356,6 +358,8 @@ impl Renderer for EguiRenderer {
         current_image: usize,
         camera: &Camera,
         ui: &mut UserInterface,
+        world: &mut World,
+        scene: &Scene,
     ) {
         puffin::profile_function!();
         self.update_buffers(device, ui);

@@ -1,7 +1,9 @@
 use crate::camera::Camera;
+use crate::scene::Scene;
 use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
+use bevy_ecs::prelude::*;
 use downcast_rs::{impl_downcast, Downcast};
 
 pub mod clear;
@@ -23,6 +25,8 @@ pub trait Renderer: Downcast {
         current_image: usize,
         camera: &Camera,
         ui: &mut UserInterface,
+        world: &mut World,
+        scene: &Scene,
     );
 
     fn destroy(&mut self, device: &mut Device);

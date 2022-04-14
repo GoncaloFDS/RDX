@@ -1,15 +1,21 @@
 use crate::camera::Camera;
+use crate::chunk::{
+    Biome, Chunk, ChunkCoord, NoiseSettings, TerrainGenerator, CHUNK_SIZE, MAP_SIZE,
+};
 use crate::input::Input;
 use crate::renderers::egui_renderer::EguiRenderer;
 use crate::renderers::raytracer::Raytracer;
 use crate::renderers::Renderer;
+use crate::scene::Scene;
 use crate::time::Time;
 use crate::user_interface::UserInterface;
 use crate::vulkan::device::Device;
 use crate::vulkan::instance::Instance;
 use crate::vulkan::raytracing::raytracing_properties::RaytracingProperties;
+use bevy_ecs::prelude::*;
 use erupt::vk;
-use glam::vec3;
+use glam::{ivec3, vec3};
+use rayon::prelude::*;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -19,6 +25,8 @@ pub struct App {
     window: Window,
     device: Device,
     instance: Instance,
+    world: World,
+    scene: Scene,
     render_queue: Vec<Box<dyn Renderer>>,
     ui: UserInterface,
     camera: Camera,
@@ -45,16 +53,43 @@ impl App {
 
         let egui_renderer = EguiRenderer::new(&mut device);
         let raytracer = Raytracer::new(&mut device, raytracing_properties);
-        let render_queue: Vec<Box<dyn Renderer>> =
+        let mut render_queue: Vec<Box<dyn Renderer>> =
             vec![Box::new(raytracer), Box::new(egui_renderer)];
+
+        let mut world = World::default();
+        let scene = Scene::new();
+
+        let noise_settings = NoiseSettings::new(144, 1, 0.008);
+        let biome = Biome::new(noise_settings);
+        let chunks_to_spawn: Vec<_> = (0..MAP_SIZE)
+            .collect::<Vec<_>>()
+            .par_iter()
+            .flat_map(|&x| {
+                (0..MAP_SIZE)
+                    .into_iter()
+                    .map(|z| {
+                        let x = x - MAP_SIZE / 2;
+                        let z = z - MAP_SIZE / 2;
+                        let mut chunk = Chunk::new(ivec3(x * CHUNK_SIZE, 0, z * CHUNK_SIZE));
+                        let chunk_coord = ChunkCoord::new(x, z);
+                        TerrainGenerator::generate_chunk(&mut chunk, &biome);
+                        (chunk, chunk_coord)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        world.spawn_batch(chunks_to_spawn);
 
         let app = App {
             window,
             device,
             instance,
+            world,
+            scene,
             render_queue,
             ui,
-            camera: Camera::new(vec3(0.0, 0.0, -1.0), vec3(0.0, 0.0, 0.0)),
+            camera: Camera::new(vec3(0.0, 100.0, 0.0), vec3(2.0, 100.0, 2.0)),
             input: Input::default(),
             time: Time::new(),
         };
@@ -127,6 +162,8 @@ impl App {
                 acquired_frame.image_index,
                 &self.camera,
                 &mut self.ui,
+                &mut self.world,
+                &self.scene,
             )
         });
 

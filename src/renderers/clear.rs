@@ -1,8 +1,10 @@
 use crate::camera::Camera;
 use crate::renderers::Renderer;
+use crate::scene::Scene;
 use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
+use bevy_ecs::prelude::World;
 use erupt::vk;
 use std::slice;
 
@@ -63,6 +65,8 @@ impl Renderer for Clear {
         current_image: usize,
         camera: &Camera,
         ui: &mut UserInterface,
+        world: &mut World,
+        scene: &Scene,
     ) {
         self.render_area = vk::Rect2D {
             offset: Default::default(),

@@ -39,9 +39,9 @@ impl Camera {
         let inverse_view = view.inverse();
         let (_, mut orientation, position) = inverse_view.to_scale_rotation_translation();
 
-        let right = inverse_view * Vec4::X;
-        let up = inverse_view * Vec4::Y;
-        let forward = inverse_view * -Vec4::Z;
+        let right = (inverse_view * Vec4::X).normalize();
+        let up = (inverse_view * Vec4::Y).normalize();
+        let forward = (inverse_view * -Vec4::Z).normalize();
 
         let view_dir = (center - eye).normalize();
         let a = view_dir.xz().normalize();
@@ -142,14 +142,12 @@ impl Camera {
             self.move_up(-move_amount)
         }
 
-        let updated = self.moving_forward
+        self.moving_forward
             || self.moving_back
             || self.moving_left
             || self.moving_right
             || self.moving_up
-            || self.moving_down;
-
-        updated
+            || self.moving_down
     }
 
     fn move_forward(&mut self, amount: f32) {

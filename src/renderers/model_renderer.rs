@@ -1,11 +1,13 @@
 use crate::camera::Camera;
 use crate::renderers::Renderer;
+use crate::scene::Scene;
 use crate::user_interface::UserInterface;
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::graphics_pipeline::GraphicsPipeline;
 use crate::vulkan::pipeline_layout::PipelineLayout;
 use crate::vulkan::shader_module::{Shader, ShaderModule};
+use bevy_ecs::prelude::World;
 use erupt::{vk, ExtendableFrom};
 use std::slice;
 
@@ -102,6 +104,8 @@ impl Renderer for ModelRenderer {
         current_image: usize,
         camera: &Camera,
         ui: &mut UserInterface,
+        world: &mut World,
+        scene: &Scene,
     ) {
     }
 

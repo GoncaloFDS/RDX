@@ -34,7 +34,7 @@ impl DescriptorSetManager {
 
         let create_info = vk::DescriptorPoolCreateInfoBuilder::new()
             .pool_sizes(&pool_sizes)
-            .max_sets(max_sets as _);
+            .max_sets(max_sets);
 
         let descriptor_pool = unsafe {
             device

@@ -1,5 +1,7 @@
 use crate::camera::Camera;
+use crate::chunk::Chunk;
 use crate::renderers::Renderer;
+use crate::scene::Scene;
 use crate::user_interface::UserInterface;
 use crate::vulkan::buffer::Buffer;
 use crate::vulkan::command_buffer::CommandBuffer;
@@ -8,6 +10,7 @@ use crate::vulkan::descriptor_binding::DescriptorBinding;
 use crate::vulkan::descriptor_set_manager::DescriptorSetManager;
 use crate::vulkan::device::Device;
 use crate::vulkan::image::Image;
+use crate::vulkan::instance::Instance;
 use crate::vulkan::pipeline_layout::PipelineLayout;
 use crate::vulkan::raytracing::acceleration_structure::{
     get_total_memory_requirements, AccelerationStructure,
@@ -20,15 +23,14 @@ use crate::vulkan::raytracing::shader_binding_table::{Entry, ShaderBindingTable}
 use crate::vulkan::raytracing::top_level_acceleration_structure::{
     AccelerationInstance, TopLevelAccelerationStructure,
 };
-use crate::vulkan::sampler::{Sampler, SamplerInfo};
 use crate::vulkan::shader_module::{Shader, ShaderModule};
 use crate::vulkan::subresource_range::SubresourceRange;
-use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
-use crate::vulkan::vertex::ModelVertex;
-use crevice::std430::AsStd430;
+use crate::vulkan::vertex::{ModelVertex, Std430ModelVertex};
+use bevy_ecs::prelude::World;
 use erupt::vk;
 use glam::{vec2, vec3, Mat4};
+use rayon::prelude::*;
 use std::mem::size_of;
 
 const VERTICES_PER_QUAD: u64 = 4;
@@ -552,41 +554,78 @@ impl Renderer for Raytracer {
         current_image: usize,
         camera: &Camera,
         ui: &mut UserInterface,
+        world: &mut World,
+        scene: &Scene,
     ) {
         puffin::profile_function!();
 
         if self.first {
             self.first = false;
-            let vertices = vec![
-                ModelVertex::new(vec3(-0.5, -0.5, 0.0), vec2(0.0, 0.0)).as_std430(),
-                ModelVertex::new(vec3(0.5, -0.5, 0.0), vec2(0.0, 0.0)).as_std430(),
-                ModelVertex::new(vec3(0.0, 0.5, 0.0), vec2(0.0, 0.0)).as_std430(),
-            ];
-            let indices = vec![0, 1, 2];
-            let offsets = vec![(0u32, 0)];
+            let meshes = world
+                .query::<&mut Chunk>()
+                .iter_mut(world)
+                .collect::<Vec<_>>()
+                .iter_mut()
+                .map(|chunk| chunk.compute_chunk_mesh(scene))
+                .collect::<Vec<_>>();
+
+            let mut vertex_offset = 0;
+            let mut index_offset = 0;
+            let offsets = meshes
+                .iter()
+                .map(|mesh| {
+                    let offsets = (vertex_offset, index_offset);
+                    vertex_offset += mesh.vertices().len() as u32;
+                    index_offset += mesh.indices().len() as u32;
+                    offsets
+                })
+                .collect::<Vec<_>>();
+
+            let vertices = meshes
+                .iter()
+                .fold(vec![], |mut acc: Vec<Std430ModelVertex>, mesh| {
+                    acc.extend(mesh.vertices());
+                    acc
+                });
+            let indices = meshes.iter().fold(vec![], |mut acc: Vec<u32>, mesh| {
+                acc.extend(mesh.indices());
+                acc
+            });
 
             //
             self.vertex_buffer.write_data(device, &vertices, 0);
             self.index_buffer.write_data(device, &indices, 0);
 
             //
-            let mut geometries = BottomLevelGeometry::default();
-            geometries.add_geometry_triangles(
-                device,
-                &self.vertex_buffer,
-                &self.index_buffer,
-                0,
-                3,
-                0,
-                3,
-                true,
-            );
+            let mut vertex_offset = 0;
+            let mut index_offset = 0;
+            for mesh in meshes {
+                let vertices_count = mesh.vertices().len() as u32;
+                let indices_count = mesh.indices().len() as u32;
+                let mut geometries = BottomLevelGeometry::default();
+                geometries.add_geometry_triangles(
+                    device,
+                    &self.vertex_buffer,
+                    &self.index_buffer,
+                    vertex_offset,
+                    vertices_count,
+                    index_offset,
+                    indices_count,
+                    true,
+                );
 
-            self.bottom_structures = vec![BottomLevelAccelerationStructure::new(
-                device,
-                self.raytracing_properties,
-                geometries,
-            )];
+                vertex_offset += vertices_count * size_of::<Std430ModelVertex>() as u32;
+                index_offset += indices_count * size_of::<u32>() as u32;
+
+                self.bottom_structures
+                    .push(BottomLevelAccelerationStructure::new(
+                        device,
+                        self.raytracing_properties,
+                        geometries,
+                    ));
+            }
+
+            //
 
             CommandPool::single_time_submit(device, |command_buffer| {
                 // blas
@@ -629,10 +668,15 @@ impl Renderer for Raytracer {
                     .iter()
                     .map(|blas| blas.get_address(device))
                     .collect::<Vec<_>>();
-                let instances = vec![AccelerationInstance::new(0, 0, 0, Mat4::IDENTITY)];
-                let instances = instances
-                    .iter()
-                    .map(|ins| ins.generate(blas_address[0]))
+                let instances = world
+                    .query::<&Chunk>()
+                    .iter(world)
+                    .enumerate()
+                    .map(|(id, chunk)| {
+                        let instance =
+                            AccelerationInstance::new(id as _, id as _, 0, chunk.transform());
+                        instance.generate(blas_address[instance.blas_id() as usize])
+                    })
                     .collect::<Vec<_>>();
                 self.instances_buffer.write_data(device, &instances, 0);
             });

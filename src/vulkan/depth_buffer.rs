@@ -1,4 +1,3 @@
-use crate::vulkan::command_pool::CommandPool;
 use crate::vulkan::device::Device;
 use crate::vulkan::image::Image;
 use crate::vulkan::instance::Instance;
