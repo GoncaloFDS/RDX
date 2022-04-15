@@ -1,4 +1,4 @@
-use glam::{const_mat4, Mat4, Quat, Vec2, Vec3, Vec3Swizzles, Vec4};
+use glam::{const_mat4, vec3, vec4, Mat4, Quat, Vec2, Vec3, Vec3Swizzles, Vec4};
 use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode};
 
 // Intermediate transformation that aligns the axes with the expected Vulkan
@@ -11,72 +11,53 @@ const X_MAT: Mat4 = const_mat4!(
 
 pub struct Camera {
     position: Vec3,
-    right: Vec4,
-    up: Vec4,
-    forward: Vec4,
     orientation: Quat,
-
-    yaw: f32,
-    pitch: f32,
-
-    moving_forward: bool,
-    moving_back: bool,
-    moving_right: bool,
-    moving_left: bool,
-    moving_up: bool,
-    moving_down: bool,
-
-    mouse_left_pressed: bool,
-
+    movement: Movement,
+    forward: Vec3,
+    right: Vec3,
+    up: Vec3,
     look_speed: f32,
     move_speed: f32,
+    mouse_left_pressed: bool,
+}
+
+#[derive(Default)]
+struct Movement {
+    forward: bool,
+    back: bool,
+    right: bool,
+    left: bool,
+    up: bool,
+    down: bool,
 }
 
 impl Camera {
     pub fn new(eye: Vec3, center: Vec3) -> Self {
         let view = Mat4::look_at_rh(eye, center, Vec3::Y);
+        let orientation = Quat::from_mat4(&view);
 
-        let inverse_view = view.inverse();
-        let (_, mut orientation, position) = inverse_view.to_scale_rotation_translation();
-
-        let right = (inverse_view * Vec4::X).normalize();
-        let up = (inverse_view * Vec4::Y).normalize();
-        let forward = (inverse_view * -Vec4::Z).normalize();
-
-        let view_dir = (center - eye).normalize();
-        let a = view_dir.xz().normalize();
-        let b = view_dir.xy().normalize();
-
-        let yaw = a.angle_between(-Vec2::Y);
-        let yaw = if yaw.is_nan() { 0.0 } else { yaw };
-        let pitch = b.angle_between(-Vec2::Y);
-        let pitch = if pitch.is_nan() { 0.0 } else { pitch };
-
-        orientation = Quat::from_rotation_y(yaw) * Quat::from_rotation_x(pitch);
+        let v = Mat4::from_quat(orientation).to_cols_array_2d();
+        let forward = -vec3(v[0][2], v[1][2], v[2][2]);
+        let right = vec3(v[0][0], v[1][0], v[2][0]);
+        let up = right.cross(forward);
 
         Camera {
-            position,
+            position: eye,
+            orientation,
+            movement: Default::default(),
+            forward,
             right,
             up,
-            forward,
-            orientation,
-            yaw,
-            pitch,
-            moving_forward: false,
-            moving_back: false,
-            moving_right: false,
-            moving_left: false,
-            moving_up: false,
-            moving_down: false,
-            mouse_left_pressed: false,
             look_speed: 10.0,
             move_speed: 100.0,
+            mouse_left_pressed: false,
         }
     }
 
     pub fn view(&self) -> Mat4 {
-        Mat4::from_quat(self.orientation).inverse()
-            * Mat4::from_translation(self.position).inverse()
+        let t = Mat4::from_translation(-self.position);
+        let r = Mat4::from_quat(self.orientation);
+        r * t
     }
 
     pub fn projection(&self, aspect_ratio: f32) -> Mat4 {
@@ -85,86 +66,86 @@ impl Camera {
 
     pub fn handle_input(&mut self, input: KeyboardInput) {
         match input.virtual_keycode.unwrap() {
-            VirtualKeyCode::W => self.moving_forward = input.state == ElementState::Pressed,
-            VirtualKeyCode::S => self.moving_back = input.state == ElementState::Pressed,
-            VirtualKeyCode::A => self.moving_left = input.state == ElementState::Pressed,
-            VirtualKeyCode::D => self.moving_right = input.state == ElementState::Pressed,
-            VirtualKeyCode::Q => self.moving_down = input.state == ElementState::Pressed,
-            VirtualKeyCode::E => self.moving_up = input.state == ElementState::Pressed,
+            VirtualKeyCode::W => self.movement.forward = input.state == ElementState::Pressed,
+            VirtualKeyCode::S => self.movement.back = input.state == ElementState::Pressed,
+            VirtualKeyCode::A => self.movement.left = input.state == ElementState::Pressed,
+            VirtualKeyCode::D => self.movement.right = input.state == ElementState::Pressed,
+            VirtualKeyCode::Q => self.movement.down = input.state == ElementState::Pressed,
+            VirtualKeyCode::E => self.movement.up = input.state == ElementState::Pressed,
             _ => {}
         }
     }
 
     pub fn handle_mouse_input(&mut self, button: MouseButton, state: ElementState) {
-        match button {
-            MouseButton::Left => self.mouse_left_pressed = state == ElementState::Pressed,
-            MouseButton::Right => {}
-            MouseButton::Middle => {}
-            MouseButton::Other(_) => {}
+        if button == MouseButton::Left {
+            self.mouse_left_pressed = state == ElementState::Pressed
         }
     }
 
-    pub fn handle_mouse_move(&mut self, x: f32, y: f32, delta_time: f32) {
+    pub fn handle_mouse_move(&mut self, dx: f32, dy: f32, delta_time: f32) {
         if self.mouse_left_pressed {
-            self.yaw += -x * self.look_speed * delta_time;
-            self.pitch += y * self.look_speed * delta_time;
-            self.orientation = Quat::from_rotation_y(self.yaw) * Quat::from_rotation_x(self.pitch);
-
+            let xa = -dy * self.look_speed * delta_time;
+            let ya = dx * self.look_speed * delta_time;
+            let delta_quat = Quat::from_vec4(vec4(xa, ya, 0.0, 1.0));
+            self.orientation = (delta_quat * self.orientation).normalize();
+            self.set_up(Vec3::Y);
             self.update_vectors();
         }
     }
 
+    fn set_up(&mut self, up: Vec3) {
+        let view = self.view().to_cols_array_2d();
+        let dir = -vec3(view[0][2], view[1][2], view[2][2]);
+        self.orientation =
+            Quat::from_mat4(&Mat4::look_at_rh(self.position, self.position + dir, up));
+    }
+
     fn update_vectors(&mut self) {
-        let rotation = Mat4::from_quat(self.orientation);
-        self.right = (rotation * Vec4::X).normalize();
-        self.up = (rotation * Vec4::Y).normalize();
-        self.forward = (rotation * -Vec4::Z).normalize();
+        let v = Mat4::from_quat(self.orientation).to_cols_array_2d();
+        self.forward = -vec3(v[0][2], v[1][2], v[2][2]);
+        self.right = vec3(v[0][0], v[1][0], v[2][0]);
+        self.up = self.right.cross(self.forward);
     }
 
     pub fn update_camera(&mut self, delta_time: f32) -> bool {
-        let move_amount = delta_time * self.move_speed;
-        if self.moving_forward {
+        // FIXME: use delta_time
+        let move_amount = 0.016 * self.move_speed;
+        if self.movement.forward {
             self.move_forward(move_amount)
         }
-        if self.moving_back {
+        if self.movement.back {
             self.move_forward(-move_amount)
         }
-        if self.moving_right {
+        if self.movement.right {
             self.move_right(move_amount)
         }
-        if self.moving_left {
+        if self.movement.left {
             self.move_right(-move_amount)
         }
-        if self.moving_up {
+        if self.movement.up {
             self.move_up(move_amount)
         }
-        if self.moving_down {
+        if self.movement.down {
             self.move_up(-move_amount)
         }
 
-        self.moving_forward
-            || self.moving_back
-            || self.moving_left
-            || self.moving_right
-            || self.moving_up
-            || self.moving_down
+        self.movement.forward
+            || self.movement.back
+            || self.movement.left
+            || self.movement.right
+            || self.movement.up
+            || self.movement.down
     }
 
     fn move_forward(&mut self, amount: f32) {
-        self.position += amount * self.forward.truncate();
+        self.position += amount * self.forward;
     }
 
     fn move_right(&mut self, amount: f32) {
-        self.position += amount * self.right.truncate();
+        self.position += amount * self.right;
     }
 
     fn move_up(&mut self, amount: f32) {
-        self.position += amount * self.up.truncate();
-    }
-}
-
-impl Camera {
-    pub fn position(&self) -> Vec3 {
-        self.position
+        self.position += amount * self.up;
     }
 }

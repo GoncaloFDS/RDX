@@ -89,7 +89,7 @@ impl App {
             scene,
             render_queue,
             ui,
-            camera: Camera::new(vec3(0.0, 100.0, 0.0), vec3(2.0, 100.0, 2.0)),
+            camera: Camera::new(vec3(20.0, 50.0, 0.0), vec3(0.0, 50.0, 0.0)),
             input: Input::default(),
             time: Time::new(),
         };
