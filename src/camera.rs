@@ -49,7 +49,7 @@ impl Camera {
             right,
             up,
             look_speed: 10.0,
-            move_speed: 100.0,
+            move_speed: 30.0,
             mouse_left_pressed: false,
         }
     }

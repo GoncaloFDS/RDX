@@ -53,33 +53,13 @@ impl App {
 
         let egui_renderer = EguiRenderer::new(&mut device);
         let raytracer = Raytracer::new(&mut device, raytracing_properties);
-        let mut render_queue: Vec<Box<dyn Renderer>> =
+        let render_queue: Vec<Box<dyn Renderer>> =
             vec![Box::new(raytracer), Box::new(egui_renderer)];
 
         let mut world = World::default();
         let scene = Scene::new();
 
-        let noise_settings = NoiseSettings::new(144, 1, 0.008);
-        let biome = Biome::new(noise_settings);
-        let chunks_to_spawn: Vec<_> = (0..MAP_SIZE)
-            .collect::<Vec<_>>()
-            .par_iter()
-            .flat_map(|&x| {
-                (0..MAP_SIZE)
-                    .into_iter()
-                    .map(|z| {
-                        let x = x - MAP_SIZE / 2;
-                        let z = z - MAP_SIZE / 2;
-                        let mut chunk = Chunk::new(ivec3(x * CHUNK_SIZE, 0, z * CHUNK_SIZE));
-                        let chunk_coord = ChunkCoord::new(x, z);
-                        TerrainGenerator::generate_chunk(&mut chunk, &biome);
-                        (chunk, chunk_coord)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-
-        world.spawn_batch(chunks_to_spawn);
+        spawn_entities(&mut world);
 
         let app = App {
             window,
@@ -239,4 +219,28 @@ impl Drop for App {
         self.device.destroy();
         self.instance.destroy();
     }
+}
+
+fn spawn_entities(world: &mut World) {
+    let noise_settings = NoiseSettings::new(144, 1, 0.008);
+    let biome = Biome::new(noise_settings);
+    let chunks_to_spawn: Vec<_> = (0..MAP_SIZE)
+        .collect::<Vec<_>>()
+        .par_iter()
+        .flat_map(|&x| {
+            (0..MAP_SIZE)
+                .into_iter()
+                .map(|z| {
+                    let x = x - MAP_SIZE / 2;
+                    let z = z - MAP_SIZE / 2;
+                    let mut chunk = Chunk::new(ivec3(x * CHUNK_SIZE, 0, z * CHUNK_SIZE));
+                    let chunk_coord = ChunkCoord::new(x, z);
+                    TerrainGenerator::generate_chunk(&mut chunk, &biome);
+                    (chunk, chunk_coord)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    world.spawn_batch(chunks_to_spawn);
 }

@@ -23,22 +23,26 @@ use crate::vulkan::raytracing::shader_binding_table::{Entry, ShaderBindingTable}
 use crate::vulkan::raytracing::top_level_acceleration_structure::{
     AccelerationInstance, TopLevelAccelerationStructure,
 };
+use crate::vulkan::sampler::{Sampler, SamplerInfo};
 use crate::vulkan::shader_module::{Shader, ShaderModule};
 use crate::vulkan::subresource_range::SubresourceRange;
+use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
 use crate::vulkan::vertex::{ModelVertex, Std430ModelVertex};
 use bevy_ecs::prelude::World;
 use erupt::vk;
-use glam::{vec2, vec3, Mat4};
+use glam::*;
 use rayon::prelude::*;
 use std::mem::size_of;
 
-const VERTICES_PER_QUAD: u64 = 4;
-const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * VERTICES_PER_QUAD;
-const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 2;
+const STAGING_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
+const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
+const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
+const BLAS_BUFFER_SIZE: u64 = 1024 * 1024 * 1600;
+const TLAS_BUFFER_SIZE: u64 = 1024 * 1024 * 16;
 const MAX_INSTANCE_COUNT: u64 = 2048;
 const INSTANCE_BUFFER_SIZE: u64 =
-    size_of::<vk::AccelerationStructureInstanceKHR>() as u64 * MAX_INSTANCE_COUNT;
+    size_of::<vk::AccelerationStructureInstanceKHR>() as u64 * MAX_INSTANCE_COUNT * 100;
 
 pub struct Raytracer {
     pipeline: RaytracingPipeline,
@@ -56,11 +60,14 @@ pub struct Raytracer {
     instances_buffer: Buffer,
     shader_binding_table: ShaderBindingTable,
     vertex_buffer: Buffer,
+    staging_vertex_buffer: Buffer,
     index_buffer: Buffer,
+    staging_index_buffer: Buffer,
     offset_buffer: Buffer,
     uniform_buffers: Vec<UniformBuffer>,
     material_buffer: Buffer,
-    // sampler: Sampler,
+    texture_images: Vec<TextureImage>,
+    sampler: Sampler,
     first: bool,
 }
 
@@ -121,18 +128,18 @@ impl Raytracer {
                 vk::ShaderStageFlags::CLOSEST_HIT_KHR,
             ),
             // Textures
-            // DescriptorBinding::new(
-            //     8,
-            //     1,
-            //     vk::DescriptorType::SAMPLED_IMAGE,
-            //     vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-            // ),
-            // DescriptorBinding::new(
-            //     9,
-            //     1,
-            //     vk::DescriptorType::SAMPLER,
-            //     vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-            // ),
+            DescriptorBinding::new(
+                8,
+                1,
+                vk::DescriptorType::SAMPLED_IMAGE,
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+            ),
+            DescriptorBinding::new(
+                9,
+                1,
+                vk::DescriptorType::SAMPLER,
+                vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+            ),
         ];
 
         let descriptor_set_manager = DescriptorSetManager::new(device, &descriptor_bindings, 3);
@@ -216,18 +223,16 @@ impl Raytracer {
             MAX_INSTANCE_COUNT as u32,
         )];
 
-        let tlas_memory_requirements = get_total_memory_requirements(&top_structures);
-
         let top_structures_buffer = Buffer::empty(
             device,
-            VERTEX_BUFFER_SIZE,
+            TLAS_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
             gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
 
         let top_structures_scratch_buffer = Buffer::empty(
             device,
-            VERTEX_BUFFER_SIZE,
+            TLAS_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
@@ -237,14 +242,14 @@ impl Raytracer {
         // blas
         let blas_buffer = Buffer::empty(
             device,
-            VERTEX_BUFFER_SIZE,
+            BLAS_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
             gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
 
         let blas_scratch_buffer = Buffer::empty(
             device,
-            VERTEX_BUFFER_SIZE,
+            BLAS_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
@@ -278,22 +283,38 @@ impl Raytracer {
         let vertex_buffer = Buffer::empty(
             device,
             VERTEX_BUFFER_SIZE,
-            vk::BufferUsageFlags::VERTEX_BUFFER | buffer_usage_flags,
-            gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS | gpu_alloc::UsageFlags::HOST_ACCESS,
+            vk::BufferUsageFlags::VERTEX_BUFFER
+                | vk::BufferUsageFlags::TRANSFER_DST
+                | buffer_usage_flags,
+            gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
+        );
+        let staging_vertex_buffer = Buffer::empty(
+            device,
+            STAGING_BUFFER_SIZE,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            gpu_alloc::UsageFlags::HOST_ACCESS,
         );
 
         let index_buffer = Buffer::empty(
             device,
             INDEX_BUFFER_SIZE,
-            vk::BufferUsageFlags::INDEX_BUFFER | buffer_usage_flags,
-            gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS | gpu_alloc::UsageFlags::HOST_ACCESS,
+            vk::BufferUsageFlags::INDEX_BUFFER
+                | vk::BufferUsageFlags::TRANSFER_DST
+                | buffer_usage_flags,
+            gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
+        );
+        let staging_index_buffer = Buffer::empty(
+            device,
+            STAGING_BUFFER_SIZE,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            gpu_alloc::UsageFlags::HOST_ACCESS,
         );
 
         let offset_buffer = Buffer::empty(
             device,
-            VERTEX_BUFFER_SIZE,
+            INSTANCE_BUFFER_SIZE,
             vk::BufferUsageFlags::STORAGE_BUFFER | buffer_usage_flags,
-            gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
+            gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS | gpu_alloc::UsageFlags::HOST_ACCESS,
         );
 
         let uniform_buffers = (0..3)
@@ -307,9 +328,7 @@ impl Raytracer {
             gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
 
-        // let sampler = Sampler::new(device, &SamplerInfo::default());
-
-        //
+        let sampler = Sampler::new(device, &SamplerInfo::default());
 
         Raytracer {
             pipeline,
@@ -327,11 +346,14 @@ impl Raytracer {
             instances_buffer,
             shader_binding_table,
             vertex_buffer,
+            staging_vertex_buffer,
             index_buffer,
+            staging_index_buffer,
             offset_buffer,
             uniform_buffers,
             material_buffer,
-            // sampler,
+            texture_images: vec![],
+            sampler,
             first,
         }
     }
@@ -381,18 +403,17 @@ impl Raytracer {
             .buffer(self.material_buffer.handle())
             .range(vk::WHOLE_SIZE)];
 
-        // let image_infos: Vec<_> = self
-        //     .textures
-        //     .iter()
-        //     .map(|texture_image| {
-        //         vk::DescriptorImageInfoBuilder::new()
-        //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-        //             .image_view(texture_image.image_view())
-        //     })
-        //     .collect();
+        let image_infos: Vec<_> = self
+            .texture_images
+            .iter()
+            .map(|texture_image| {
+                vk::DescriptorImageInfoBuilder::new()
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image_view(texture_image.image().view())
+            })
+            .collect();
 
-        // let sampler_info =
-        //     [vk::DescriptorImageInfoBuilder::new().sampler(self.sampler.handle())];
+        let sampler_info = [vk::DescriptorImageInfoBuilder::new().sampler(self.sampler.handle())];
 
         let descriptor_writes = [
             self.descriptor_set_manager.bind_acceleration_structure(
@@ -414,10 +435,10 @@ impl Raytracer {
                 .bind_buffer(current_image, 6, &material_buffer_info),
             self.descriptor_set_manager
                 .bind_buffer(current_image, 7, &offset_buffer_info),
-            // self.descriptor_set_manager
-            //     .bind_image(current_image, 8, &image_infos),
-            // self.descriptor_set_manager
-            //     .bind_image(current_image, 9, &sampler_info),
+            self.descriptor_set_manager
+                .bind_image(current_image, 8, &image_infos),
+            self.descriptor_set_manager
+                .bind_image(current_image, 9, &sampler_info),
         ];
 
         self.descriptor_set_manager
@@ -561,6 +582,10 @@ impl Renderer for Raytracer {
 
         if self.first {
             self.first = false;
+            scene.textures().iter().for_each(|texture| {
+                self.texture_images.push(TextureImage::new(device, texture));
+            });
+
             let meshes = world
                 .query::<&mut Chunk>()
                 .iter_mut(world)
@@ -593,9 +618,6 @@ impl Renderer for Raytracer {
             });
 
             //
-            self.vertex_buffer.write_data(device, &vertices, 0);
-            self.index_buffer.write_data(device, &indices, 0);
-
             //
             let mut vertex_offset = 0;
             let mut index_offset = 0;
@@ -628,6 +650,22 @@ impl Renderer for Raytracer {
             //
 
             CommandPool::single_time_submit(device, |command_buffer| {
+                self.staging_vertex_buffer.write_data(device, &vertices, 0);
+                command_buffer.copy_buffer(
+                    device,
+                    &self.staging_vertex_buffer,
+                    &self.vertex_buffer,
+                    VERTEX_BUFFER_SIZE,
+                );
+                self.staging_index_buffer.write_data(device, &indices, 0);
+                command_buffer.copy_buffer(
+                    device,
+                    &self.staging_index_buffer,
+                    &self.index_buffer,
+                    INDEX_BUFFER_SIZE,
+                );
+                self.offset_buffer.write_data(device, &offsets, 0);
+
                 // blas
                 let mut result_offset = 0;
                 let mut scratch_offset = 0;

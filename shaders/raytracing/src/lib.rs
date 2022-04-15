@@ -57,10 +57,10 @@ pub fn closest_hit(
     #[spirv(hit_attribute)] attribs: &mut Vec2,
     #[spirv(descriptor_set = 0, binding = 4, storage_buffer)] vertices: &[Vertex],
     #[spirv(descriptor_set = 0, binding = 5, storage_buffer)] indices: &[u32],
-    // #[spirv(descriptor_set = 0, binding = 6, storage_buffer)] materials: &[Material],
+    #[spirv(descriptor_set = 0, binding = 6, storage_buffer)] materials: &[Material],
     #[spirv(descriptor_set = 0, binding = 7, storage_buffer)] offsets: &[(u32, u32)],
-    // #[spirv(descriptor_set = 0, binding = 8)] textures: &Textures,
-    // #[spirv(descriptor_set = 0, binding = 9)] sampler: &Sampler,
+    #[spirv(descriptor_set = 0, binding = 8)] textures: &Textures,
+    #[spirv(descriptor_set = 0, binding = 9)] sampler: &Sampler,
 ) {
     let id = id as usize;
     let offsets = &offsets[index as usize];
@@ -78,16 +78,15 @@ pub fn closest_hit(
 
     let uv = v0.uv * barycentrics.x + v1.uv * barycentrics.y + v2.uv * barycentrics.z;
 
-    // let texture_sampler = TextureSampler {
-    //     textures,
-    //     sampler: *sampler,
-    //     uv,
-    // };
-    //
-    // let tex = texture_sampler.sample(0);
-    //
-    // *out = tex.truncate();
-    *out = vec3(0.3, 0.4, 0.6);
+    let texture_sampler = TextureSampler {
+        textures,
+        sampler: *sampler,
+        uv,
+    };
+
+    let tex = texture_sampler.sample(0);
+
+    *out = tex.truncate();
 }
 
 #[spirv(ray_generation)]

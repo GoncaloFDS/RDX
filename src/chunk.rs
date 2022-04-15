@@ -5,11 +5,11 @@ use bevy_ecs::prelude::*;
 use bracket_noise::prelude::*;
 use glam::*;
 
-pub const MAP_SIZE: i32 = 2;
+pub const MAP_SIZE: i32 = 16;
 pub const CHUNK_SIZE: i32 = 16;
 pub const CHUNK_DRAW_RANGE: i32 = 8;
 
-const CHUNK_HEIGHT: i32 = 100;
+const CHUNK_HEIGHT: i32 = 40;
 const WATER_THRESHOLD: i32 = 50;
 const NOISE_SCALE: f32 = 0.03;
 
