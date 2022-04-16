@@ -10,10 +10,9 @@ use crate::vulkan::descriptor_binding::DescriptorBinding;
 use crate::vulkan::descriptor_set_manager::DescriptorSetManager;
 use crate::vulkan::device::Device;
 use crate::vulkan::image::Image;
-use crate::vulkan::instance::Instance;
 use crate::vulkan::pipeline_layout::PipelineLayout;
 use crate::vulkan::raytracing::acceleration_structure::{
-    get_total_memory_requirements, AccelerationStructure,
+    AccelerationStructure,
 };
 use crate::vulkan::raytracing::bottom_level_acceleration_structure::BottomLevelAccelerationStructure;
 use crate::vulkan::raytracing::bottom_level_geometry::BottomLevelGeometry;
@@ -28,7 +27,7 @@ use crate::vulkan::shader_module::{Shader, ShaderModule};
 use crate::vulkan::subresource_range::SubresourceRange;
 use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
-use crate::vulkan::vertex::{ModelVertex, Std430ModelVertex};
+use crate::vulkan::vertex::{Std430ModelVertex};
 use bevy_ecs::prelude::World;
 use erupt::vk;
 use glam::*;

@@ -22,7 +22,7 @@ impl Buffer {
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
         let buffer = unsafe { device.handle().create_buffer(&create_info, None).unwrap() };
 
-        let memory_requirements = get_memory_requiremets(&device, buffer);
+        let memory_requirements = get_memory_requirements(&device, buffer);
 
         let device_memory = DeviceMemory::new(
             device,
@@ -80,7 +80,7 @@ impl Buffer {
     }
 }
 
-fn get_memory_requiremets(device: &Device, buffer: vk::Buffer) -> vk::MemoryRequirements2 {
+fn get_memory_requirements(device: &Device, buffer: vk::Buffer) -> vk::MemoryRequirements2 {
     let info = vk::BufferMemoryRequirementsInfo2Builder::new().buffer(buffer);
     unsafe { device.handle().get_buffer_memory_requirements2(&info, None) }
 }

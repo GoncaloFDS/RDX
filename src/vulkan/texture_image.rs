@@ -29,7 +29,6 @@ impl TextureImage {
 
         let sampler = Sampler::new(device, &SamplerInfo::default());
 
-        let command_pool = device.command_pool();
         image.transition_image_layout(device, vk::ImageLayout::TRANSFER_DST_OPTIMAL);
         image.copy_from(device, &staging_buffer);
         image.transition_image_layout(device, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);

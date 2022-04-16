@@ -1,4 +1,4 @@
-use glam::{const_mat4, vec3, vec4, Mat4, Quat, Vec2, Vec3, Vec3Swizzles, Vec4};
+use glam::*;
 use winit::event::{ElementState, KeyboardInput, MouseButton, VirtualKeyCode};
 
 // Intermediate transformation that aligns the axes with the expected Vulkan
@@ -48,8 +48,8 @@ impl Camera {
             forward,
             right,
             up,
-            look_speed: 10.0,
-            move_speed: 30.0,
+            look_speed: 1.0,
+            move_speed: 40.0,
             mouse_left_pressed: false,
         }
     }
@@ -83,6 +83,7 @@ impl Camera {
     }
 
     pub fn handle_mouse_move(&mut self, dx: f32, dy: f32, delta_time: f32) {
+        log::debug!("{}", delta_time);
         if self.mouse_left_pressed {
             let xa = -dy * self.look_speed * delta_time;
             let ya = dx * self.look_speed * delta_time;
@@ -109,7 +110,7 @@ impl Camera {
 
     pub fn update_camera(&mut self, delta_time: f32) -> bool {
         // FIXME: use delta_time
-        let move_amount = 0.016 * self.move_speed;
+        let move_amount = delta_time * self.move_speed;
         if self.movement.forward {
             self.move_forward(move_amount)
         }

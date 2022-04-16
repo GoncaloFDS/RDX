@@ -72,7 +72,7 @@ impl App {
             ui,
             camera: Camera::new(vec3(20.0, 50.0, 0.0), vec3(0.0, 50.0, 0.0)),
             input: Input::default(),
-            time: Time::new(),
+            time: Time::default(),
         };
 
         (app, event_loop)
@@ -125,6 +125,7 @@ impl App {
     }
 
     fn run(&mut self) {
+        self.time.update();
         puffin::GlobalProfiler::lock().new_frame();
         puffin::profile_function!();
         let acquired_frame = self
@@ -135,7 +136,7 @@ impl App {
             self.recreate_swapchain();
         }
 
-        self.camera.update_camera(self.time.delta_time());
+        self.camera.update_camera(self.time.delta_seconds());
         self.ui.update(&self.window);
         self.render_queue.iter_mut().for_each(|renderer| {
             renderer.update(
@@ -172,8 +173,6 @@ impl App {
 
         self.device
             .queue_present(self.device.queue(), semaphore, acquired_frame.image_index);
-
-        self.time.tick();
     }
 
     fn recreate_swapchain(&mut self) {
@@ -205,7 +204,7 @@ impl App {
         self.camera.handle_mouse_move(
             self.input.delta_x(),
             self.input.delta_y(),
-            self.time.delta_time(),
+            self.time.delta_seconds(),
         )
     }
 }
