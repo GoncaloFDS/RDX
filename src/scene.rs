@@ -165,6 +165,7 @@ fn get_uvs(block: Block, texture_atlas: &TextureAtlas) -> BlockUVs {
 
 impl Scene {
     pub fn new() -> Self {
+        log::debug!("loading textures");
         let textures = vec![Texture::load_texture("resources/textures/blocks.png")];
 
         let frames_file = File::open("resources/textures/blocks.json").unwrap();
@@ -177,6 +178,7 @@ impl Scene {
             uvs.insert(block, block_uvs);
         }
 
+        log::debug!("loading materialas");
         let materials = vec![
             Material::new(vec3(1.0, 0.0, 0.0)).as_std430(),
             Material::new(vec3(0.0, 1.0, 0.0)).as_std430(),

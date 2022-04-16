@@ -41,7 +41,7 @@ impl App {
         let event_loop = EventLoop::new();
         let window = WindowBuilder::new()
             .with_title("RDX")
-            .with_inner_size(PhysicalSize::new(1024, 720))
+            .with_inner_size(PhysicalSize::new(1600, 900))
             .build(&event_loop)
             .unwrap();
 
@@ -56,6 +56,7 @@ impl App {
         let render_queue: Vec<Box<dyn Renderer>> =
             vec![Box::new(raytracer), Box::new(egui_renderer)];
 
+        log::debug!("generate_chunk");
         let mut world = World::default();
         let scene = Scene::new();
 
@@ -222,7 +223,8 @@ impl Drop for App {
 }
 
 fn spawn_entities(world: &mut World) {
-    let noise_settings = NoiseSettings::new(144, 1, 0.008);
+    log::debug!("spawning chunks");
+    let noise_settings = NoiseSettings::new(144, 4, 0.018);
     let biome = Biome::new(noise_settings);
     let chunks_to_spawn: Vec<_> = (0..MAP_SIZE)
         .collect::<Vec<_>>()

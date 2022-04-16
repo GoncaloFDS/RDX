@@ -5,7 +5,7 @@ use bevy_ecs::prelude::*;
 use bracket_noise::prelude::*;
 use glam::*;
 
-pub const MAP_SIZE: i32 = 16;
+pub const MAP_SIZE: i32 = 32;
 pub const CHUNK_SIZE: i32 = 16;
 pub const CHUNK_DRAW_RANGE: i32 = 8;
 
@@ -114,7 +114,7 @@ impl Chunk {
         }
     }
 
-    pub fn compute_chunk_mesh(&mut self, scene: &Scene) -> Mesh {
+    pub fn compute_chunk_mesh(&mut self, scene: &Scene) -> &Mesh {
         puffin::profile_function!();
         if self.needs_update {
             let mut mesh = Mesh::default();
@@ -132,7 +132,7 @@ impl Chunk {
             self.needs_update = false;
         }
 
-        self.mesh.clone()
+        &self.mesh
     }
 
     pub fn get_position_from_index(index: i32) -> IVec3 {

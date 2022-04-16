@@ -581,19 +581,24 @@ impl Renderer for Raytracer {
         puffin::profile_function!();
 
         if self.first {
+            log::debug!("first update");
             self.first = false;
             scene.textures().iter().for_each(|texture| {
                 self.texture_images.push(TextureImage::new(device, texture));
             });
 
-            let meshes = world
+            log::debug!("collect chunks");
+            let mut chunks = world
                 .query::<&mut Chunk>()
                 .iter_mut(world)
-                .collect::<Vec<_>>()
-                .iter_mut()
+                .collect::<Vec<_>>();
+            log::debug!("compute chunk meshes");
+            let meshes = chunks
+                .par_iter_mut()
                 .map(|chunk| chunk.compute_chunk_mesh(scene))
                 .collect::<Vec<_>>();
 
+            log::debug!("compute chunk offsets");
             let mut vertex_offset = 0;
             let mut index_offset = 0;
             let offsets = meshes
@@ -606,19 +611,21 @@ impl Renderer for Raytracer {
                 })
                 .collect::<Vec<_>>();
 
+            log::debug!("compute chunk vertices");
             let vertices = meshes
                 .iter()
                 .fold(vec![], |mut acc: Vec<Std430ModelVertex>, mesh| {
                     acc.extend(mesh.vertices());
                     acc
                 });
+
+            log::debug!("compute chunk indices");
             let indices = meshes.iter().fold(vec![], |mut acc: Vec<u32>, mesh| {
                 acc.extend(mesh.indices());
                 acc
             });
 
-            //
-            //
+            log::debug!("add chunk geometries");
             let mut vertex_offset = 0;
             let mut index_offset = 0;
             for mesh in meshes {
@@ -647,8 +654,7 @@ impl Renderer for Raytracer {
                     ));
             }
 
-            //
-
+            log::debug!("submit meshes");
             CommandPool::single_time_submit(device, |command_buffer| {
                 self.staging_vertex_buffer.write_data(device, &vertices, 0);
                 command_buffer.copy_buffer(
@@ -718,6 +724,7 @@ impl Renderer for Raytracer {
                     .collect::<Vec<_>>();
                 self.instances_buffer.write_data(device, &instances, 0);
             });
+            log::debug!("uploading meshes: done");
         }
 
         self.update_descriptors(device, current_image, camera);

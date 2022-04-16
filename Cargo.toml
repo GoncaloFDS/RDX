@@ -45,4 +45,4 @@ downcast-rs = "1.2.0"
 strum = "0.24"
 strum_macros = "0.24"
 
-bevy_ecs = "0.6.1"
+bevy_ecs = "0.7.0"
