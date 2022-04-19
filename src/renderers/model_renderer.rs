@@ -106,6 +106,7 @@ impl Renderer for ModelRenderer {
         ui: &mut UserInterface,
         world: &mut World,
         scene: &Scene,
+        update_meshes: bool,
     ) {
     }
 

@@ -27,6 +27,7 @@ pub trait Renderer: Downcast {
         ui: &mut UserInterface,
         world: &mut World,
         scene: &Scene,
+        update_meshes: bool,
     );
 
     fn destroy(&mut self, device: &mut Device);

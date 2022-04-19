@@ -1,5 +1,4 @@
 use crate::vulkan::buffer::Buffer;
-use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
 use crate::vulkan::raytracing::acceleration_structure;
 use crate::vulkan::raytracing::acceleration_structure::AccelerationStructure;
@@ -39,7 +38,7 @@ impl BottomLevelAccelerationStructure {
             .collect();
 
         let build_sizes_info = acceleration_structure::get_acceleration_structure_build_sizes(
-            &device,
+            device,
             &build_geometry_info,
             &max_primitive_counts,
             &raytracing_properties,
@@ -64,27 +63,16 @@ impl BottomLevelAccelerationStructure {
         self.handle
     }
 
-    pub fn generate(
-        &mut self,
-        device: &Device,
-        command_buffer: &CommandBuffer,
-        scratch_buffer: &Buffer,
-        scratch_offset: u64,
-        result_buffer: &Buffer,
-        result_offset: u64,
-    ) {
-        let mut build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
-            .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR)
-            .geometries(self.geometries.geometry())
-            .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
-            ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR)
-            .src_acceleration_structure(vk::AccelerationStructureKHR::null());
+    pub fn generate(&mut self, device: &Device, blas_buffer: &Buffer, buffer_offset: u64) {
+        if !self.handle.is_null() {
+            return;
+        }
 
         let create_info = vk::AccelerationStructureCreateInfoKHRBuilder::new()
-            ._type(build_geometry_info._type)
+            ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR)
             .size(self.build_sizes_info.acceleration_structure_size)
-            .buffer(result_buffer.handle())
-            .offset(result_offset);
+            .buffer(blas_buffer.handle())
+            .offset(buffer_offset);
 
         self.handle = unsafe {
             device
@@ -92,18 +80,28 @@ impl BottomLevelAccelerationStructure {
                 .create_acceleration_structure_khr(&create_info, None)
                 .unwrap()
         };
+    }
 
-        let build_offsets = self.geometries.build_offset_info().as_ptr();
-
-        build_geometry_info.dst_acceleration_structure = self.handle;
-        build_geometry_info.scratch_data.device_address =
-            scratch_buffer.get_device_address(device) + scratch_offset;
-
-        command_buffer.build_acceleration_structure(
-            device,
-            &[build_geometry_info],
-            &[build_offsets],
-        )
+    pub fn get_build_info(
+        &self,
+        scratch_buffer_address: vk::DeviceAddress,
+        scratch_offset: u64,
+    ) -> (
+        vk::AccelerationStructureBuildGeometryInfoKHRBuilder,
+        &[vk::AccelerationStructureBuildRangeInfoKHR],
+    ) {
+        let build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHRBuilder::new()
+            .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR)
+            .geometries(self.geometries.geometry())
+            .mode(vk::BuildAccelerationStructureModeKHR::BUILD_KHR)
+            ._type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL_KHR)
+            .src_acceleration_structure(vk::AccelerationStructureKHR::null())
+            .dst_acceleration_structure(self.handle)
+            .scratch_data(vk::DeviceOrHostAddressKHR {
+                device_address: scratch_buffer_address + scratch_offset,
+            });
+        let build_offsets = self.geometries.build_offset_info();
+        (build_geometry_info, build_offsets)
     }
 
     pub fn get_address(&self, device: &Device) -> u64 {

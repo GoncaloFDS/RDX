@@ -1,5 +1,6 @@
 use crate::vulkan::command_buffer::CommandBuffer;
 use crate::vulkan::device::Device;
+use crate::vulkan::fence::Fence;
 use erupt::{vk, DeviceLoader, SmallVec};
 
 pub struct CommandPool {
@@ -55,6 +56,7 @@ impl CommandPool {
     }
 
     pub fn single_time_submit(device: &Device, action: impl FnOnce(CommandBuffer)) {
+        puffin::profile_function!();
         let command_pool = device.command_pool();
         let alloc_info = vk::CommandBufferAllocateInfoBuilder::new()
             .command_pool(command_pool.handle)
@@ -81,14 +83,18 @@ impl CommandPool {
 
         let graphics_queue = device.queue();
 
+        let fence = Fence::new(device);
+
         unsafe {
             device
                 .handle()
-                .queue_submit(graphics_queue, &[submit_info], vk::Fence::null())
+                .queue_submit(graphics_queue, &[submit_info], fence.handle())
                 .unwrap();
-            device.wait_idle();
 
-            // device.free_command_buffers(command_pool.handle, &[command_buffer.handle()])
+            device
+                .handle()
+                .wait_for_fences(&[fence.handle()], true, u64::MAX)
+                .unwrap();
         }
     }
 }

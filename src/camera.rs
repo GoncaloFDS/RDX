@@ -54,6 +54,10 @@ impl Camera {
         }
     }
 
+    pub fn position(&self) -> Vec3 {
+        self.position
+    }
+
     pub fn view(&self) -> Mat4 {
         let t = Mat4::from_translation(-self.position);
         let r = Mat4::from_quat(self.orientation);
@@ -83,7 +87,6 @@ impl Camera {
     }
 
     pub fn handle_mouse_move(&mut self, dx: f32, dy: f32, delta_time: f32) {
-        log::debug!("{}", delta_time);
         if self.mouse_left_pressed {
             let xa = -dy * self.look_speed * delta_time;
             let ya = dx * self.look_speed * delta_time;

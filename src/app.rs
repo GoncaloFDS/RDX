@@ -1,6 +1,7 @@
 use crate::camera::Camera;
 use crate::chunk::{
-    Biome, Chunk, ChunkCoord, NoiseSettings, TerrainGenerator, CHUNK_SIZE, MAP_SIZE,
+    Biome, Chunk, ChunkCoord, NoiseSettings, TerrainGenerator, CHUNK_DRAW_RANGE, CHUNK_SIZE,
+    MAP_SIZE,
 };
 use crate::input::Input;
 use crate::renderers::egui_renderer::EguiRenderer;
@@ -138,6 +139,8 @@ impl App {
 
         self.camera.update_camera(self.time.delta_seconds());
         self.ui.update(&self.window);
+        let update_meshes = get_chuncks_around_camera(&mut self.world, &self.camera);
+
         self.render_queue.iter_mut().for_each(|renderer| {
             renderer.update(
                 &mut self.device,
@@ -146,6 +149,7 @@ impl App {
                 &mut self.ui,
                 &mut self.world,
                 &self.scene,
+                update_meshes,
             )
         });
 
@@ -244,4 +248,49 @@ fn spawn_entities(world: &mut World) {
         .collect();
 
     world.spawn_batch(chunks_to_spawn);
+}
+
+fn get_chuncks_around_camera(world: &mut World, camera: &Camera) -> bool {
+    // TODO: remove
+    let noise_settings = NoiseSettings::new(144, 4, 0.018);
+    let biome = Biome::new(noise_settings);
+    //
+
+    let camera_chunk = Chunk::chunk_coords_from_world_position(camera.position());
+    let start_x = camera_chunk.x() - CHUNK_DRAW_RANGE;
+    let start_z = camera_chunk.z() - CHUNK_DRAW_RANGE;
+    let end_x = camera_chunk.x() + CHUNK_DRAW_RANGE;
+    let end_z = camera_chunk.z() + CHUNK_DRAW_RANGE;
+
+    let new_chunks_coords = (start_x..end_x)
+        .into_iter()
+        .flat_map(|x| {
+            (start_z..end_z)
+                .into_iter()
+                .map(|z| ChunkCoord::new(x, z))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    let existing = world.query::<&ChunkCoord>().iter(world).collect::<Vec<_>>();
+
+    let chunks_to_spawn = new_chunks_coords
+        .iter()
+        .filter(|chunk_coord| !existing.contains(chunk_coord))
+        .map(|&chunk_coord| {
+            log::debug!("inserting {:?}", chunk_coord);
+            let mut chunk = Chunk::new(ivec3(
+                chunk_coord.x() * CHUNK_SIZE,
+                0,
+                chunk_coord.z() * CHUNK_SIZE,
+            ));
+            TerrainGenerator::generate_chunk(&mut chunk, &biome);
+            (chunk, chunk_coord)
+        })
+        .collect::<Vec<_>>();
+
+    let should_update = !chunks_to_spawn.is_empty();
+    world.spawn_batch(chunks_to_spawn);
+
+    should_update
 }

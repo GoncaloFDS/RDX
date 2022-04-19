@@ -360,6 +360,7 @@ impl Renderer for EguiRenderer {
         ui: &mut UserInterface,
         world: &mut World,
         scene: &Scene,
+        update_meshes: bool,
     ) {
         puffin::profile_function!();
         self.update_buffers(device, ui);

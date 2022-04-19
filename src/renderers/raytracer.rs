@@ -11,9 +11,7 @@ use crate::vulkan::descriptor_set_manager::DescriptorSetManager;
 use crate::vulkan::device::Device;
 use crate::vulkan::image::Image;
 use crate::vulkan::pipeline_layout::PipelineLayout;
-use crate::vulkan::raytracing::acceleration_structure::{
-    AccelerationStructure,
-};
+use crate::vulkan::raytracing::acceleration_structure::AccelerationStructure;
 use crate::vulkan::raytracing::bottom_level_acceleration_structure::BottomLevelAccelerationStructure;
 use crate::vulkan::raytracing::bottom_level_geometry::BottomLevelGeometry;
 use crate::vulkan::raytracing::raytracing_pipeline::RaytracingPipeline;
@@ -27,17 +25,17 @@ use crate::vulkan::shader_module::{Shader, ShaderModule};
 use crate::vulkan::subresource_range::SubresourceRange;
 use crate::vulkan::texture_image::TextureImage;
 use crate::vulkan::uniform_buffer::{UniformBuffer, UniformBufferObject};
-use crate::vulkan::vertex::{Std430ModelVertex};
+use crate::vulkan::vertex::Std430ModelVertex;
 use bevy_ecs::prelude::World;
 use erupt::vk;
 use glam::*;
 use rayon::prelude::*;
 use std::mem::size_of;
 
-const STAGING_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
+const STAGING_BUFFER_SIZE: u64 = 1024 * 1024 * 1600;
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
-const BLAS_BUFFER_SIZE: u64 = 1024 * 1024 * 1600;
+const BLAS_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
 const TLAS_BUFFER_SIZE: u64 = 1024 * 1024 * 16;
 const MAX_INSTANCE_COUNT: u64 = 2048;
 const INSTANCE_BUFFER_SIZE: u64 =
@@ -248,7 +246,7 @@ impl Raytracer {
 
         let blas_scratch_buffer = Buffer::empty(
             device,
-            BLAS_BUFFER_SIZE,
+            STAGING_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
@@ -358,6 +356,7 @@ impl Raytracer {
     }
 
     fn update_descriptors(&mut self, device: &mut Device, current_image: usize, camera: &Camera) {
+        puffin::profile_function!();
         let extent = device.swapchain().extent();
         let aspect_ratio = extent.width as f32 / extent.height as f32;
         let view_model = camera.view();
@@ -576,15 +575,18 @@ impl Renderer for Raytracer {
         ui: &mut UserInterface,
         world: &mut World,
         scene: &Scene,
+        update_meshes: bool,
     ) {
         puffin::profile_function!();
 
-        if self.first {
+        if update_meshes || self.first {
             log::debug!("first update");
             self.first = false;
-            scene.textures().iter().for_each(|texture| {
-                self.texture_images.push(TextureImage::new(device, texture));
-            });
+            if self.texture_images.is_empty() {
+                scene.textures().iter().for_each(|texture| {
+                    self.texture_images.push(TextureImage::new(device, texture));
+                });
+            }
 
             log::debug!("collect chunks");
             let mut chunks = world
@@ -594,7 +596,7 @@ impl Renderer for Raytracer {
             log::debug!("compute chunk meshes");
             let meshes = chunks
                 .par_iter_mut()
-                .map(|chunk| chunk.compute_chunk_mesh(scene))
+                .map(|chunk| chunk.get_or_compute_mesh(scene))
                 .collect::<Vec<_>>();
 
             log::debug!("compute chunk offsets");
@@ -624,17 +626,21 @@ impl Renderer for Raytracer {
                 acc
             });
 
+            //
+            self.bottom_structures.clear();
+            //
             log::debug!("add chunk geometries");
             let mut vertex_offset = 0;
             let mut index_offset = 0;
+            let vertex_buffer_address = self.vertex_buffer.get_device_address(device);
+            let index_buffer_address = self.index_buffer.get_device_address(device);
             for mesh in meshes {
                 let vertices_count = mesh.vertices().len() as u32;
                 let indices_count = mesh.indices().len() as u32;
                 let mut geometries = BottomLevelGeometry::default();
                 geometries.add_geometry_triangles(
-                    device,
-                    &self.vertex_buffer,
-                    &self.index_buffer,
+                    vertex_buffer_address,
+                    index_buffer_address,
                     vertex_offset,
                     vertices_count,
                     index_offset,
@@ -655,6 +661,7 @@ impl Renderer for Raytracer {
 
             log::debug!("submit meshes");
             CommandPool::single_time_submit(device, |command_buffer| {
+                puffin::profile_scope!("submit");
                 self.staging_vertex_buffer.write_data(device, &vertices, 0);
                 command_buffer.copy_buffer(
                     device,
@@ -673,21 +680,31 @@ impl Renderer for Raytracer {
 
                 // blas
                 let mut result_offset = 0;
-                let mut scratch_offset = 0;
                 for blas in &mut self.bottom_structures {
-                    blas.generate(
-                        device,
-                        &command_buffer,
-                        &self.blas_scratch_buffer,
-                        scratch_offset,
-                        &self.blas_buffer,
-                        result_offset,
-                    );
+                    blas.generate(device, &self.blas_buffer, result_offset);
                     result_offset += blas.build_sizes().acceleration_structure_size;
-                    scratch_offset += blas.build_sizes().build_scratch_size;
                 }
 
-                command_buffer.acceleration_structure_memory_barrier(device);
+                let mut build_infos = vec![];
+                let mut build_offsets = vec![];
+                let scratch_address = self.blas_scratch_buffer.get_device_address(device);
+                let mut scratch_offset = 0;
+                for blas in &self.bottom_structures {
+                    let (a, b) = blas.get_build_info(scratch_address, scratch_offset);
+                    scratch_offset += blas.build_sizes().build_scratch_size;
+                    build_infos.push(a);
+                    build_offsets.push(b.as_ptr());
+                }
+
+                command_buffer.build_acceleration_structure(device, &build_infos, &build_offsets);
+
+                command_buffer.acceleration_structure_memory_barrier(
+                    device,
+                    vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                    vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                    vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
+                    vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR,
+                );
                 // tlas
                 let mut result_offset = 0;
                 let mut scratch_offset = 0;
@@ -705,6 +722,13 @@ impl Renderer for Raytracer {
                     scratch_offset += tlas.build_sizes().build_scratch_size;
                 }
 
+                command_buffer.acceleration_structure_memory_barrier(
+                    device,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
+                );
                 // instances
                 let blas_address = &self
                     .bottom_structures

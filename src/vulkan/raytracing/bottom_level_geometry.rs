@@ -25,9 +25,8 @@ impl BottomLevelGeometry {
 
     pub fn add_geometry_triangles(
         &mut self,
-        device: &Device,
-        vertex_buffer: &Buffer,
-        index_buffer: &Buffer,
+        vertex_buffer_address: vk::DeviceAddress,
+        index_buffer_address: vk::DeviceAddress,
         vertex_offset: u32,
         vertex_count: u32,
         index_offset: u32,
@@ -37,13 +36,13 @@ impl BottomLevelGeometry {
         let triangles = vk::AccelerationStructureGeometryDataKHR {
             triangles: *vk::AccelerationStructureGeometryTrianglesDataKHRBuilder::new()
                 .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: vertex_buffer.get_device_address(device),
+                    device_address: vertex_buffer_address,
                 })
                 .vertex_stride(size_of::<Std430ModelVertex>() as _)
                 .max_vertex(vertex_count)
                 .vertex_format(vk::Format::R32G32B32_SFLOAT)
                 .index_data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: index_buffer.get_device_address(device),
+                    device_address: index_buffer_address,
                 })
                 .index_type(vk::IndexType::UINT32), //.transform_data()
         };

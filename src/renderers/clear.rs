@@ -67,6 +67,7 @@ impl Renderer for Clear {
         ui: &mut UserInterface,
         world: &mut World,
         scene: &Scene,
+        update_meshes: bool,
     ) {
         self.render_area = vk::Rect2D {
             offset: Default::default(),

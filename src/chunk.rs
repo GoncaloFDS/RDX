@@ -5,13 +5,11 @@ use bevy_ecs::prelude::*;
 use bracket_noise::prelude::*;
 use glam::*;
 
-pub const MAP_SIZE: i32 = 32;
+pub const MAP_SIZE: i32 = 16;
 pub const CHUNK_SIZE: i32 = 16;
-pub const CHUNK_DRAW_RANGE: i32 = 8;
+pub const CHUNK_DRAW_RANGE: i32 = 4;
 
 const CHUNK_HEIGHT: i32 = 40;
-const WATER_THRESHOLD: i32 = 50;
-const NOISE_SCALE: f32 = 0.03;
 
 pub struct NoiseSettings {
     seed: u64,
@@ -114,7 +112,7 @@ impl Chunk {
         }
     }
 
-    pub fn compute_chunk_mesh(&mut self, scene: &Scene) -> &Mesh {
+    pub fn get_or_compute_mesh(&mut self, scene: &Scene) -> &Mesh {
         puffin::profile_function!();
         if self.needs_update {
             let mut mesh = Mesh::default();

@@ -216,24 +216,23 @@ impl CommandBuffer {
         }
     }
 
-    pub fn acceleration_structure_memory_barrier(&self, device: &Device) {
-        let memory_barrier = vk::MemoryBarrierBuilder::new()
-            .src_access_mask(
-                vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR
-                    | vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR,
-            )
-            .dst_access_mask(
-                vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR
-                    | vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR,
-            );
-
+    pub fn acceleration_structure_memory_barrier(
+        &self,
+        device: &Device,
+        src_stage: vk::PipelineStageFlags,
+        dst_stage: vk::PipelineStageFlags,
+        src_access: vk::AccessFlags,
+        dst_access: vk::AccessFlags,
+    ) {
         unsafe {
             device.handle().cmd_pipeline_barrier(
                 self.handle,
-                vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-                vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                src_stage,
+                dst_stage,
                 vk::DependencyFlags::default(),
-                &[memory_barrier],
+                &[vk::MemoryBarrierBuilder::new()
+                    .src_access_mask(src_access)
+                    .dst_access_mask(dst_access)],
                 &[],
                 &[],
             )
