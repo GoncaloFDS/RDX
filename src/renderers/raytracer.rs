@@ -35,7 +35,8 @@ use std::mem::size_of;
 const STAGING_BUFFER_SIZE: u64 = 1024 * 1024 * 1600;
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
-const BLAS_BUFFER_SIZE: u64 = 1024 * 1024 * 1000;
+const BLAS_BUFFER_SIZE: u64 = 267386880;
+const SCRATCH_BUFFER_SIZE: u64 = 157286400;
 const TLAS_BUFFER_SIZE: u64 = 1024 * 1024 * 16;
 const MAX_INSTANCE_COUNT: u64 = 2048;
 const INSTANCE_BUFFER_SIZE: u64 =
@@ -233,7 +234,7 @@ impl Raytracer {
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
-            gpu_alloc::UsageFlags::DEVICE_ADDRESS,
+            gpu_alloc::UsageFlags::DEVICE_ADDRESS | gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
 
         // blas
@@ -246,11 +247,11 @@ impl Raytracer {
 
         let blas_scratch_buffer = Buffer::empty(
             device,
-            STAGING_BUFFER_SIZE,
+            SCRATCH_BUFFER_SIZE,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                 | vk::BufferUsageFlags::STORAGE_BUFFER,
-            gpu_alloc::UsageFlags::DEVICE_ADDRESS,
+            gpu_alloc::UsageFlags::DEVICE_ADDRESS | gpu_alloc::UsageFlags::FAST_DEVICE_ACCESS,
         );
 
         // images

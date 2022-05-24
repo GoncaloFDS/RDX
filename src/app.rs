@@ -126,9 +126,11 @@ impl App {
     }
 
     fn run(&mut self) {
-        self.time.update();
         puffin::GlobalProfiler::lock().new_frame();
         puffin::profile_function!();
+
+        self.time.update();
+
         let acquired_frame = self
             .device
             .acquire_swapchain_frame(&self.instance, u64::MAX);
@@ -140,6 +142,7 @@ impl App {
         self.camera.update_camera(self.time.delta_seconds());
         self.ui.update(&self.window);
         let update_meshes = get_chuncks_around_camera(&mut self.world, &self.camera);
+        // let update_meshes = true;
 
         self.render_queue.iter_mut().for_each(|renderer| {
             renderer.update(

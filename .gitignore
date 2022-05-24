@@ -1,7 +1,7 @@
 target/
-shaders/*/target
+resources/shaders/*/target
 
-shaders/*/Cargo.lock
+resources/shaders/*/Cargo.lock
 Cargo.lock
 
 .idea

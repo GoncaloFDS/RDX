@@ -5,7 +5,7 @@ use bevy_ecs::prelude::*;
 use bracket_noise::prelude::*;
 use glam::*;
 
-pub const MAP_SIZE: i32 = 16;
+pub const MAP_SIZE: i32 = 4;
 pub const CHUNK_SIZE: i32 = 16;
 pub const CHUNK_DRAW_RANGE: i32 = 4;
 

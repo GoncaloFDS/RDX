@@ -45,6 +45,7 @@ impl Vertex for ModelVertex {
     }
 }
 
+#[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct EguiVertex {
     pub position: Vec2,
